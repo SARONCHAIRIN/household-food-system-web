@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #f9f9ff;
+  --color-surface-dim: #cfdaf2;
+  --color-surface-bright: #f9f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f0f3ff;
+  --color-surface-container: #e7eeff;
+  --color-surface-container-high: #dee8ff;
+  --color-surface-container-highest: #d8e3fb;
+  --color-on-surface: #111c2d;
+  --color-on-surface-variant: #3d4a42;
+  --color-inverse-surface: #263143;
+  --color-inverse-on-surface: #ecf1ff;
+  --color-outline: #6d7a72;
+  --color-outline-variant: #bccac0;
+  --color-surface-tint: #006c4a;
+  
+  --color-primary: #006948;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #00855d;
+  --color-on-primary-container: #f5fff7;
+  --color-inverse-primary: #68dba9;
+  --color-primary-fixed: #85f8c4;
+  --color-primary-fixed-dim: #68dba9;
+  --color-on-primary-fixed: #002114;
+  --color-on-primary-fixed-variant: #005137;
+
+  --color-secondary: #9d4300;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #fd761a;
+  --color-on-secondary-container: #5c2400;
+  --color-secondary-fixed: #ffdbca;
+  --color-secondary-fixed-dim: #ffb690;
+  --color-on-secondary-fixed: #341100;
+  --color-on-secondary-fixed-variant: #783200;
+
+  --color-tertiary: #006194;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #007bb9;
+  --color-on-tertiary-container: #fdfcff;
+  --color-tertiary-fixed: #cce5ff;
+  --color-tertiary-fixed-dim: #93ccff;
+  --color-on-tertiary-fixed: #001d31;
+  --color-on-tertiary-fixed-variant: #004b73;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --color-background: #f9f9ff;
+  --color-on-background: #111c2d;
+  --color-surface-variant: #d8e3fb;
+
+  --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f9f9ff;
+  color: #111c2d;
+  overscroll-behavior: none;
+  min-height: 100vh;
+}
+
+/* Custom typographic helper classes matching the design specifications */
+.font-display-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 36px;
+  line-height: 44px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.font-display-sm {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+}
+.font-headline-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+.font-headline-md {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.font-headline-sm {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.font-title-md {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.font-currency-display {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 32px;
+  line-height: 38px;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+.font-label-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+}
+.font-label-md {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+.font-label-sm {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+.font-body-lg {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+}
+.font-body-md {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+.font-body-sm {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.px-screen-gutter {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+.-mx-screen-gutter {
+  margin-left: -1rem;
+  margin-right: -1rem;
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'liga';
+}
+
+/* Hide scrollbars while preserving scroll functionality */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
