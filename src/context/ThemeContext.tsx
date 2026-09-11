@@ -14,23 +14,17 @@ const STORAGE_KEY = 'household_food_theme';
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // កែប្រែត្រង់កន្លែងនេះ៖ កំណត់យក 'light' ជា Default ប្រសិនបើគ្មានទិន្នន័យក្នុង localStorage
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === 'light' || saved === 'dark') {
         return saved;
       }
-      if (
-        typeof window !== 'undefined' &&
-        window.matchMedia &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches
-      ) {
-        return 'dark';
-      }
     } catch {
       // ignore
     }
-    return 'light';
+    return 'light'; // បង្ខំឱ្យចេញជា light ជាលំនាំដើម
   });
 
   const applyTheme = (newTheme: Theme) => {
@@ -62,19 +56,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     applyTheme(theme);
   }, [theme]);
 
-  // Listen for system theme changes when user hasn't set explicit preference in localStorage
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      const hasStored = localStorage.getItem(STORAGE_KEY);
-      if (!hasStored) {
-        setTheme(e.matches ? 'dark' : 'light');
-      }
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  // លុបចោលការ Listener system theme changes (prefers-color-scheme) 
+  // ដើម្បីកុំឱ្យវាប្តូរទៅ dark តាម System របស់អ្នកប្រើប្រាស់
 
   const value = useMemo(
     () => ({
