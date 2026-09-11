@@ -1,0 +1,6 @@
+{
+  "name": "Household Food",
+  "description": "Apartment 4B shared food budgeting, meal attendance, kitchen rotation, and pro-rata expense splitting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
