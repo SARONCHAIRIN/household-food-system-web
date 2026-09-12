@@ -14,8 +14,11 @@ import {
   MealConfirmationStatus,
 } from '../types/api';
 
-const DEFAULT_API_BASE = typeof window !== 'undefined' ? '/api/v1' : 'https://household-food-system.onrender.com/api/v1';
+// ជំនួសកូដចាស់ដោយកូដនេះ៖
 
+const DEFAULT_API_BASE = (typeof window !== 'undefined' && import.meta.env.VITE_API_URL) 
+  ? import.meta.env.VITE_API_URL 
+  : 'https://household-food-system.onrender.com/api/v1';
 export class ApiException extends Error {
   status: number;
   constructor(message: string, status: number) {
