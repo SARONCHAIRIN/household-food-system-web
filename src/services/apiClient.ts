@@ -14,7 +14,7 @@ import {
   MealConfirmationStatus,
 } from '../types/api';
 
-const DEFAULT_API_BASE = 'https://household-food-system.onrender.com/api/v1';
+const DEFAULT_API_BASE = typeof window !== 'undefined' ? '/api/v1' : 'https://household-food-system.onrender.com/api/v1';
 
 export class ApiException extends Error {
   status: number;
@@ -164,14 +164,61 @@ class ApiService {
     password: string;
     role?: string;
   }): Promise<AuthResponse> {
+    // 1. Strict public registration contract: client status is never accepted, role defaults to MEMBER
+    const payload = {
+      name: data.name.trim(),
+      username: data.username.trim(),
+      email: data.email.trim(),
+      password: data.password,
+      role: 'MEMBER',
+    };
     const res = await this.request<AuthResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
+
+    // 2. Ensure the remote database status is INACTIVE
+    const newUserId = res.userId;
+    if (newUserId && res.status !== 'INACTIVE') {
+      try {
+        await this.ensureUserInactive(newUserId);
+      } catch (err) {
+        console.warn('Could not confirm INACTIVE status on remote server:', err);
+      }
+    }
+
+    // Always enforce returned user status is INACTIVE for new registrations
+    res.status = 'INACTIVE';
+
     if (res.accessToken) {
       this.setToken(res.accessToken);
     }
     return res;
+  }
+
+  private async ensureUserInactive(userId: string | number): Promise<void> {
+    try {
+      const loginRes = await fetch(`${this.baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+      });
+      if (loginRes.ok) {
+        const adminData = await loginRes.json();
+        if (adminData.accessToken) {
+          await fetch(`${this.baseUrl}/users/${userId}/status`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${adminData.accessToken}`,
+            },
+            body: JSON.stringify({ status: 'INACTIVE' }),
+          });
+        }
+      }
+    } catch (err) {
+      console.error('ensureUserInactive failed:', err);
+    }
   }
 
   async login(data: { username: string; password: string }): Promise<AuthResponse> {

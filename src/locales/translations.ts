@@ -270,6 +270,24 @@ export interface TranslationDictionary {
   partialBalanceMembers: string;
   preSettleEstimateUnpaid: string;
   settlementReportPreview: string;
+
+  // Registration & Pending Status
+  accountPendingApproval: string;
+  accountPendingApprovalDesc: string;
+  pendingApprovalBadge: string;
+  pendingApprovalNotice: string;
+  pendingApprovalMealsBlocked: string;
+  checkApprovalStatus: string;
+  pendingApprovalCheckSuccess: string;
+  pendingApprovalStillPending: string;
+  adminPendingBanner: string;
+  filterAll: string;
+  filterActive: string;
+  filterPending: string;
+  filterInactive: string;
+  activateResident: string;
+  newResidentPending: string;
+  manuallyDeactivated: string;
 }
 
 export const translations: Record<Language, TranslationDictionary> = {
@@ -543,6 +561,24 @@ export const translations: Record<Language, TranslationDictionary> = {
     partialBalanceMembers: 'Partial / Insufficient Balance',
     preSettleEstimateUnpaid: 'Pre-Settle Estimate (Unpaid)',
     settlementReportPreview: 'Settlement Report Preview',
+
+    // Registration & Pending Status
+    accountPendingApproval: 'Account Pending Approval',
+    accountPendingApprovalDesc: 'Your account has been created. An admin needs to activate you before you can join meals and be included in cost splitting.',
+    pendingApprovalBadge: 'Pending Approval',
+    pendingApprovalNotice: 'Status: INACTIVE (Pending Admin Approval)',
+    pendingApprovalMealsBlocked: 'Attendance is paused while your account is pending approval. You will be able to mark attendance once activated by an admin.',
+    checkApprovalStatus: 'Check Approval Status',
+    pendingApprovalCheckSuccess: '🎉 Your account has been activated by an admin! Welcome to the household!',
+    pendingApprovalStillPending: 'Your account is still pending admin approval. Please check back shortly.',
+    adminPendingBanner: 'new resident(s) awaiting approval. Review and activate below.',
+    filterAll: 'All',
+    filterActive: 'Active',
+    filterPending: 'Pending Approval',
+    filterInactive: 'Inactive',
+    activateResident: 'Activate Member',
+    newResidentPending: 'New resident · Never activated',
+    manuallyDeactivated: 'Manually deactivated',
   },
 
   km: {
