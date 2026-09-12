@@ -1,58 +1,69 @@
 import React from 'react';
-import { NavTab } from '../types';
-import { ApiUser } from '../api/types';
-import { useLanguage } from '../context/LanguageContext';
+import { useApp, TabType } from '../context/AppContext';
 
-interface BottomNavProps {
-  currentTab: NavTab;
-  onTabChange: (tab: NavTab) => void;
-  currentUser: ApiUser | null; // បន្ថែម currentUser សម្រាប់ពិនិត្យសិទ្ធិ
+interface NavItem {
+  id: TabType;
+  label: string;
+  icon: string;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onTabChange, currentUser }) => {
-  const { t } = useLanguage();
-  const isAdmin = currentUser?.role === 'ADMIN';
+export const BottomNav: React.FC = () => {
+  const { currentTab, setCurrentTab, allowedTabs, t } = useApp();
 
-  const allTabs: { id: NavTab; label: string; icon: string; adminOnly?: boolean }[] = [
-    { id: 'dashboard', label: t.nav.dashboard, icon: 'grid_view' },
-    { id: 'meals', label: t.nav.meals, icon: 'restaurant' },
-    { id: 'deposits', label: t.nav.deposits, icon: 'account_balance_wallet' },
-    { id: 'bills', label: t.nav.bills, icon: 'receipt_long', adminOnly: true }, // កំណត់ថាសម្រាប់តែ Admin តែប៉ុណ្ណោះ
-    { id: 'profile', label: t.nav.profile, icon: 'manage_accounts' },
+  const allNavItems: NavItem[] = [
+    { id: 'dashboard', label: t.navDashboard, icon: 'dashboard' },
+    { id: 'meals', label: t.navMeals, icon: 'restaurant' },
+    { id: 'deposits', label: t.navDeposits, icon: 'account_balance_wallet' },
+    { id: 'bills', label: t.navBills, icon: 'receipt_long' },
+    { id: 'profile', label: t.navProfile, icon: 'person' },
   ];
 
-  // តម្រងទិន្នន័យ៖ បើមិនមែនជា Admin ទេ គឺលុបផ្ទាំងណាដែលមាន adminOnly ចោល
-  const tabs = allTabs.filter(tab => !tab.adminOnly || isAdmin);
+  // Role-gated: strictly filtered by allowedTabs
+  const navItems = allNavItems.filter((item) => allowedTabs.includes(item.id));
 
   return (
-    <nav className="fixed bottom-0 w-full z-50 pb-safe bg-surface-container-lowest/95 backdrop-blur-xl shadow-[0_-4px_20px_rgba(15,23,42,0.06)] border-t border-surface-container-high/50 transition-colors">
-      <div className="flex items-center justify-around h-16 px-2 max-w-lg md:max-w-xl mx-auto">
-        {tabs.map((tab) => {
-          const isActive = currentTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-[54px] min-h-[44px] px-3 transition-colors relative ${
-                isActive
-                  ? 'text-primary font-semibold'
-                  : 'text-on-surface-variant hover:text-primary'
-              }`}
-            >
-              <span
-                className="material-symbols-outlined text-[24px]"
-                style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}
+    <nav
+      aria-label="Mobile Bottom Navigation"
+      className="min-[600px]:hidden fixed bottom-0 inset-x-0 z-40 pb-3 px-3 pointer-events-none"
+    >
+      <div className="max-w-md mx-auto pointer-events-auto">
+        <div className="h-16 px-1.5 bg-[var(--surface-container)]/95 backdrop-blur-xl rounded-full shadow-[0_8px_28px_rgba(17,28,45,0.18)] border border-white/20 dark:border-white/5 flex items-center justify-around">
+          {navItems.map((item) => {
+            const isActive = currentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setCurrentTab(item.id)}
+                className={`flex flex-col items-center justify-center flex-1 h-full min-h-[48px] min-w-[48px] transition-all select-none ${
+                  isActive ? 'text-[var(--primary)]' : 'text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]'
+                }`}
               >
-                {tab.icon}
-              </span>
-              <span className="font-label-sm text-[11px] leading-tight">{tab.label}</span>
-              {isActive && (
-                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-primary" />
-              )}
-            </button>
-          );
-        })}
+                <div
+                  className={`flex items-center justify-center h-8 rounded-full transition-all duration-200 ${
+                    isActive
+                      ? 'w-12 bg-[var(--primary-container)]/20 text-[var(--primary)]'
+                      : 'w-10 text-[var(--on-surface-variant)]'
+                  }`}
+                >
+                  <span
+                    className={`material-symbols-outlined text-[22px] transition-transform ${
+                      isActive ? 'scale-110 font-bold' : ''
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold mt-0.5 tracking-tight ${
+                    isActive ? 'text-[var(--primary)] font-extrabold' : 'opacity-85'
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </nav>
   );

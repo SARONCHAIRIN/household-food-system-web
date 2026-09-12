@@ -1,0 +1,646 @@
+import React, { useState, useEffect } from 'react';
+import {
+  PostSettlementReceiptData,
+  PostSettlementMemberResult,
+  buildMemberSettlementReceiptPdf,
+  buildMasterSettlementReceiptPdf,
+  downloadPdf,
+  printPdf,
+  sharePdf,
+} from '../services/settlementReportGenerator';
+import { formatCurrency } from '../services/apiClient';
+import { useApp } from '../context/AppContext';
+
+interface SettlementReceiptModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  receiptData: PostSettlementReceiptData | null;
+}
+
+export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
+  isOpen,
+  onClose,
+  receiptData,
+}) => {
+  const { t, language } = useApp();
+  const [activeTab, setActiveTab] = useState<string>('master');
+  const [sharing, setSharing] = useState(false);
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('master');
+      setActionMsg(null);
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !receiptData) return null;
+
+  const showNotification = (msg: string) => {
+    setActionMsg(msg);
+    setTimeout(() => {
+      setActionMsg((prev) => (prev === msg ? null : prev));
+    }, 3500);
+  };
+
+  const selectedMember: PostSettlementMemberResult | undefined = receiptData.members.find(
+    (m) => String(m.userId) === activeTab
+  );
+
+  const handleDownloadCurrent = () => {
+    if (activeTab === 'master') {
+      const doc = buildMasterSettlementReceiptPdf(receiptData, language);
+      const filename = `household_settlement_receipt_${receiptData.period.startDate}_${receiptData.period.endDate}_ref${receiptData.receiptId}.pdf`;
+      downloadPdf(doc, filename);
+      showNotification(language === 'km' ? 'បានទាញយកវិក្កយបត្រទូទាត់មេជា PDF' : 'Master Settlement Receipt PDF downloaded.');
+    } else if (selectedMember) {
+      const doc = buildMemberSettlementReceiptPdf(receiptData, selectedMember, language);
+      const safeName = selectedMember.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `settlement_receipt_${safeName}_ref${receiptData.receiptId}.pdf`;
+      downloadPdf(doc, filename);
+      showNotification(
+        language === 'km'
+          ? `បានទាញយកវិក្កយបត្រទូទាត់សម្រាប់ ${selectedMember.name}`
+          : `Settlement Receipt for ${selectedMember.name} downloaded.`
+      );
+    }
+  };
+
+  const handlePrintCurrent = () => {
+    if (activeTab === 'master') {
+      const doc = buildMasterSettlementReceiptPdf(receiptData, language);
+      printPdf(doc);
+    } else if (selectedMember) {
+      const doc = buildMemberSettlementReceiptPdf(receiptData, selectedMember, language);
+      printPdf(doc);
+    }
+  };
+
+  const handleShareCurrent = async () => {
+    setSharing(true);
+    try {
+      if (activeTab === 'master') {
+        const doc = buildMasterSettlementReceiptPdf(receiptData, language);
+        const filename = `household_settlement_receipt_${receiptData.period.startDate}_${receiptData.period.endDate}_ref${receiptData.receiptId}.pdf`;
+        await sharePdf(doc, filename, 'Household Settlement Receipt (Master)');
+      } else if (selectedMember) {
+        const doc = buildMemberSettlementReceiptPdf(receiptData, selectedMember, language);
+        const safeName = selectedMember.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `settlement_receipt_${safeName}_ref${receiptData.receiptId}.pdf`;
+        await sharePdf(doc, filename, `${selectedMember.name}'s Settlement Receipt`);
+      }
+      showNotification(language === 'km' ? 'បានបើកការចែករំលែក / រក្សាទុកវិក្កយបត្រ' : 'Share dialog opened / receipt saved.');
+    } catch {
+      // handled
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleBatchDownloadAll = async () => {
+    setBatchDownloading(true);
+    try {
+      // 1. Download Master Receipt
+      const masterDoc = buildMasterSettlementReceiptPdf(receiptData, language);
+      downloadPdf(
+        masterDoc,
+        `00_household_master_settlement_receipt_ref${receiptData.receiptId}.pdf`
+      );
+
+      // 2. Download each member's receipt with spacing
+      for (let i = 0; i < receiptData.members.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const m = receiptData.members[i];
+        const doc = buildMemberSettlementReceiptPdf(receiptData, m, language);
+        const safeName = m.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+        downloadPdf(doc, `receipt_${safeName}_ref${receiptData.receiptId}.pdf`);
+      }
+
+      showNotification(
+        language === 'km'
+          ? `បានទាញយកវិក្កយបត្រមេ និងវិក្កយបត្រសមាជិកទាំង ${receiptData.members.length}!`
+          : `Downloaded Master Receipt and all ${receiptData.members.length} Member Receipts!`
+      );
+    } catch {
+      // handled
+    } finally {
+      setBatchDownloading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+      <div className="relative w-full max-w-5xl bg-[var(--surface-container-lowest)] rounded-3xl shadow-2xl border border-[var(--outline)]/15 flex flex-col max-h-[92vh] overflow-hidden my-auto">
+        
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-[var(--outline)]/10 gap-3 bg-[var(--surface-container-low)]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-700 text-white flex items-center justify-center font-extrabold text-sm flex-shrink-0 shadow-xs">
+              <span className="material-symbols-outlined text-[20px]">verified</span>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-extrabold text-[var(--on-surface)] tracking-tight truncate">
+                  {t.settlementReceipt}
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-600/15 border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-extrabold uppercase tracking-wide">
+                  {t.completedTransactionRecord}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-[var(--surface-container-high)] text-[var(--on-surface-variant)] text-[10px] font-bold">
+                  {t.permanentRef} #{receiptData.receiptId}
+                </span>
+              </div>
+              <p className="text-xs text-[var(--on-surface-variant)] truncate">
+                {t.date}: {receiptData.period.startDate} - {receiptData.period.endDate} • {receiptData.settledByName} • {receiptData.settledAt}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap self-end sm:self-center">
+            <button
+              type="button"
+              onClick={handlePrintCurrent}
+              title={t.print}
+              className="min-h-[40px] px-3 rounded-xl bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--on-surface)] text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[18px]">print</span>
+              <span className="hidden sm:inline">{t.print}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShareCurrent}
+              disabled={sharing}
+              title={t.share}
+              className="min-h-[40px] px-3 rounded-xl bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--on-surface)] text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-[18px]">share</span>
+              <span className="hidden sm:inline">{sharing ? '...' : t.share}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadCurrent}
+              className="min-h-[40px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              <span>{t.saveSettlementReport}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-10 h-10 rounded-xl hover:bg-[var(--surface-container-high)] text-[var(--on-surface-variant)] flex items-center justify-center transition-all"
+              aria-label={t.close}
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Action feedback toast */}
+        {actionMsg && (
+          <div className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between transition-all">
+            <span className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">check_circle</span>
+              {actionMsg}
+            </span>
+            <button onClick={() => setActionMsg(null)} className="text-white/80 hover:text-white">
+              <span className="material-symbols-outlined text-[14px]">close</span>
+            </button>
+          </div>
+        )}
+
+        {/* Tabs Bar */}
+        <div className="flex items-center gap-1.5 p-2 px-4 sm:px-5 bg-[var(--surface-container)] border-b border-[var(--outline)]/10 overflow-x-auto scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setActiveTab('master')}
+            className={`min-h-[36px] px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+              activeTab === 'master'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-highest)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">domain</span>
+            {t.masterSummary} ({receiptData.members.length})
+          </button>
+
+          <span className="text-[var(--outline)]/40 px-1">|</span>
+
+          {receiptData.members.map((m) => {
+            const isTabActive = activeTab === String(m.userId);
+            return (
+              <button
+                key={m.userId}
+                type="button"
+                onClick={() => setActiveTab(String(m.userId))}
+                className={`min-h-[36px] px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  isTabActive
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-highest)]'
+                }`}
+              >
+                <span>{m.name}</span>
+                {m.isPaidInFull ? (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" title="Paid in Full"></span>
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-red-500" title="Insufficient Balance"></span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Main Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+          {activeTab === 'master' ? (
+            /* MASTER RECEIPT VIEW */
+            <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Top Banner */}
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-emerald-700 dark:text-emerald-400">
+                      verified_user
+                    </span>
+                    <span className="font-extrabold text-emerald-900 dark:text-emerald-200 text-sm">
+                      {language === 'km' ? 'វដ្តទូទាត់ និងកាត់ប្រាក់កក់បានបញ្ចប់' : 'Cycle Settled & Deductions Executed'}
+                    </span>
+                  </div>
+                  <p className="text-emerald-800 dark:text-emerald-300">
+                    {language === 'km'
+                      ? 'វិក្កយបត្រនេះកត់ត្រាសមតុល្យជាក់ស្តែងដែលបានកាត់ចេញដោយ POST /bills/settle ពេលទូទាត់។'
+                      : 'This receipt records the exact balances debited by POST /bills/settle at settlement execution time.'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleBatchDownloadAll}
+                  disabled={batchDownloading}
+                  className="min-h-[38px] px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 self-start sm:self-center flex-shrink-0 active:scale-95 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {batchDownloading ? 'sync' : 'folder_zip'}
+                  </span>
+                  <span>
+                    {batchDownloading
+                      ? language === 'km' ? 'កំពុងទាញយក...' : 'Downloading...'
+                      : `${t.downloadAllReports} (${receiptData.members.length + 1})`}
+                  </span>
+                </button>
+              </div>
+
+              {/* Master Totals Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
+                  <span className="text-[11px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
+                    {t.amountDue} ({t.authoritative})
+                  </span>
+                  <span className="text-2xl font-extrabold text-[var(--primary)] block">
+                    {formatCurrency(receiptData.summary.totalDueAll)}
+                  </span>
+                  <span className="text-[10px] text-[var(--on-surface-variant)]">
+                    {language === 'km' ? 'តម្លៃគណនាពេលទូទាត់' : 'Calculated charge at settlement time'}
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
+                    {t.totalAmountDeducted}
+                  </span>
+                  <span className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 block">
+                    {formatCurrency(receiptData.summary.totalDeductedAll)}
+                  </span>
+                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300">
+                    {language === 'km' ? 'បានកាត់ចេញពីកាបូបប្រាក់កក់' : 'Successfully debited across member wallets'}
+                  </span>
+                </div>
+
+                <div className={`p-4 rounded-2xl border space-y-1 ${
+                  receiptData.summary.totalRemainingOwedAll > 0
+                    ? 'bg-red-500/10 border-red-500/20'
+                    : 'bg-emerald-500/10 border-emerald-500/20'
+                }`}>
+                  <span className={`text-[11px] font-bold uppercase tracking-wider block ${
+                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    {t.outstandingBalance}
+                  </span>
+                  <span className={`text-2xl font-extrabold block ${
+                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
+                  }`}>
+                    {formatCurrency(receiptData.summary.totalRemainingOwedAll)}
+                  </span>
+                  <span className={`text-[10px] ${
+                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'
+                  }`}>
+                    {receiptData.summary.fullyPaidCount} / {receiptData.summary.totalMembers} {t.fullyPaidMembers}
+                  </span>
+                </div>
+              </div>
+
+              {/* Master Member Table */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-[var(--on-surface)] uppercase tracking-wider">
+                    {language === 'km' ? 'បញ្ជីប្រតិបត្តិការសមាជិក' : 'Member Execution Ledger'}
+                  </h4>
+                  <span className="text-xs text-[var(--on-surface-variant)]">
+                    POST /bills/settle
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-[var(--outline)]/15">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#004f35] text-white font-bold">
+                      <tr>
+                        <th className="p-3">UID</th>
+                        <th className="p-3">{t.members}</th>
+                        <th className="p-3 text-right">{t.amountDue}</th>
+                        <th className="p-3 text-right">{t.depositBefore}</th>
+                        <th className="p-3 text-right">{t.amountDeducted}</th>
+                        <th className="p-3 text-right">{t.depositAfter}</th>
+                        <th className="p-3 text-center">{t.statusLabel}</th>
+                        <th className="p-3 text-center">{t.settlementReceipt}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--outline)]/10 text-[var(--on-surface)]">
+                      {receiptData.members.map((m) => (
+                        <tr key={m.userId} className="hover:bg-[var(--surface-container-low)]">
+                          <td className="p-3 font-mono text-[var(--on-surface-variant)]">#{m.userId}</td>
+                          <td className="p-3 font-bold">{m.name}</td>
+                          <td className="p-3 text-right font-bold text-[var(--primary)]">
+                            {formatCurrency(m.totalDue)}
+                          </td>
+                          <td className="p-3 text-right text-[var(--on-surface-variant)]">
+                            {formatCurrency(m.previousDepositBalance)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                            -{formatCurrency(m.deductedAmount)}
+                          </td>
+                          <td className="p-3 text-right font-mono font-semibold">
+                            {formatCurrency(m.depositAfter)}
+                          </td>
+                          <td className="p-3 text-center">
+                            {m.isPaidInFull ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold">
+                                <span className="material-symbols-outlined text-[13px]">check</span>
+                                Paid in Full
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-700 dark:text-red-400 text-[11px] font-bold">
+                                <span className="material-symbols-outlined text-[13px]">warning</span>
+                                Partial — Owed: {formatCurrency(m.remainingOwed)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab(String(m.userId))}
+                              className="px-2.5 py-1 rounded-lg bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--primary)] text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">receipt</span>
+                              {language === 'km' ? 'មើល' : 'View'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-[var(--surface-container-low)] font-bold text-[var(--on-surface)]">
+                      <tr>
+                        <td colSpan={2} className="p-3">
+                          {t.total} ({receiptData.members.length} {t.members})
+                        </td>
+                        <td className="p-3 text-right text-[var(--primary)]">
+                          {formatCurrency(receiptData.summary.totalDueAll)}
+                        </td>
+                        <td className="p-3 text-right text-[var(--on-surface-variant)]">-</td>
+                        <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">
+                          -{formatCurrency(receiptData.summary.totalDeductedAll)}
+                        </td>
+                        <td className="p-3 text-right">-</td>
+                        <td colSpan={2} className="p-3 text-center text-xs">
+                          {receiptData.summary.totalRemainingOwedAll > 0 ? (
+                            <span className="text-red-600 font-bold">
+                              {t.outstandingBalance}: {formatCurrency(receiptData.summary.totalRemainingOwedAll)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-bold">{t.fullyPaidMembers}</span>
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : selectedMember ? (
+            /* INDIVIDUAL MEMBER RECEIPT VIEW */
+            <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Member Status Card */}
+              {selectedMember.isPaidInFull ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-emerald-700 dark:text-emerald-400">
+                      verified
+                    </span>
+                    <span className="font-extrabold text-emerald-900 dark:text-emerald-200 text-sm">
+                      {t.statusLabel}: {t.paidInFull}
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300">
+                    {language === 'km'
+                      ? `ចំនួនទឹកប្រាក់ដែលត្រូវទូទាត់ ${formatCurrency(selectedMember.totalDue)} ត្រូវបានកាត់ចេញទាំងស្រុងពីប្រាក់កក់របស់ ${selectedMember.name}។`
+                      : `The authoritative settlement charge of ${formatCurrency(selectedMember.totalDue)} has been successfully deducted in full from ${selectedMember.name}'s prepaid deposit wallet.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-red-700 dark:text-red-400">
+                      warning
+                    </span>
+                    <span className="font-extrabold text-red-900 dark:text-red-200 text-sm">
+                      {t.statusLabel}: {t.partialBalance} — {t.remainingOwed}: {formatCurrency(selectedMember.remainingOwed)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-red-800 dark:text-red-300">
+                    {language === 'km'
+                      ? `ប្រាក់កក់មុន (${formatCurrency(selectedMember.previousDepositBalance)}) មិនគ្រប់គ្រាន់សម្រាប់ទូទាត់ថ្លៃត្រូវបង់ (${formatCurrency(selectedMember.totalDue)})។ បានកាត់ ${formatCurrency(selectedMember.deductedAmount)} និងនៅជំពាក់ ${formatCurrency(selectedMember.remainingOwed)}។`
+                      : `The member's previous balance (${formatCurrency(selectedMember.previousDepositBalance)}) was insufficient to cover the authoritative amount due (${formatCurrency(selectedMember.totalDue)}). Only ${formatCurrency(selectedMember.deductedAmount)} was deducted, leaving an outstanding balance of ${formatCurrency(selectedMember.remainingOwed)}.`}
+                  </p>
+                </div>
+              )}
+
+              {/* 4 Financial Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
+                  <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
+                    {t.amountDue}
+                  </span>
+                  <span className="text-xl font-extrabold text-[var(--primary)] block">
+                    {formatCurrency(selectedMember.totalDue)}
+                  </span>
+                  <span className="text-[10px] text-[var(--on-surface-variant)]">
+                    {t.authoritative}
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
+                  <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
+                    {t.depositBefore}
+                  </span>
+                  <span className="text-xl font-extrabold text-[var(--on-surface)] block">
+                    {formatCurrency(selectedMember.previousDepositBalance)}
+                  </span>
+                  <span className="text-[10px] text-[var(--on-surface-variant)]">
+                    {language === 'km' ? 'មុនពេលទូទាត់' : 'Pre-settle wallet balance'}
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
+                    {t.amountDeducted}
+                  </span>
+                  <span className="text-xl font-extrabold text-emerald-700 dark:text-emerald-400 block">
+                    -{formatCurrency(selectedMember.deductedAmount)}
+                  </span>
+                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300">
+                    {language === 'km' ? 'បានកាត់ក្នុងវដ្តនេះ' : 'Debited this cycle'}
+                  </span>
+                </div>
+
+                <div className={`p-4 rounded-2xl border space-y-1 ${
+                  selectedMember.depositAfter < 0
+                    ? 'bg-red-500/10 border-red-500/20'
+                    : 'bg-[var(--surface-container-low)] border-[var(--outline)]/10'
+                }`}>
+                  <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
+                    {t.depositAfter}
+                  </span>
+                  <span className={`text-xl font-extrabold block ${
+                    selectedMember.depositAfter < 0 ? 'text-red-600' : 'text-[var(--on-surface)]'
+                  }`}>
+                    {formatCurrency(selectedMember.depositAfter)}
+                  </span>
+                  <span className="text-[10px] text-[var(--on-surface-variant)]">
+                    {t.depositBefore} - {t.amountDeducted}
+                  </span>
+                </div>
+              </div>
+
+              {/* Detailed Ledger Breakdown */}
+              <div className="rounded-2xl border border-[var(--outline)]/15 overflow-hidden">
+                <div className="bg-[#004f35] text-white p-3 font-bold text-xs">
+                  {language === 'km' ? 'សៀវភៅប្រតិបត្តិការទូទាត់' : 'Settlement Transaction Ledger'} (POST /bills/settle)
+                </div>
+                <div className="p-4 space-y-3 text-xs bg-[var(--surface-container-lowest)]">
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
+                    <div>
+                      <span className="font-bold text-[var(--on-surface)] block">{t.amountDue}</span>
+                      <span className="text-[11px] text-[var(--on-surface-variant)]">
+                        {receiptData.period.startDate} - {receiptData.period.endDate}
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-base text-[var(--primary)]">
+                      {formatCurrency(selectedMember.totalDue)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
+                    <div>
+                      <span className="font-bold text-[var(--on-surface)] block">{t.depositBefore}</span>
+                      <span className="text-[11px] text-[var(--on-surface-variant)]">
+                        {language === 'km' ? 'សមតុល្យប្រាក់កក់មុនកាត់' : 'Wallet balance prior to execution'}
+                      </span>
+                    </div>
+                    <span className="font-bold text-sm text-[var(--on-surface)]">
+                      {formatCurrency(selectedMember.previousDepositBalance)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
+                    <div>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400 block">{t.amountDeducted}</span>
+                      <span className="text-[11px] text-[var(--on-surface-variant)]">
+                        {language === 'km' ? 'បានកាត់ចេញពីកាបូបប្រាក់កក់' : 'Debited from deposit wallet'}
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-base text-emerald-600 dark:text-emerald-400">
+                      -{formatCurrency(selectedMember.deductedAmount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
+                    <div>
+                      <span className="font-bold text-[var(--on-surface)] block">{t.depositAfter}</span>
+                      <span className="text-[11px] text-[var(--on-surface-variant)]">
+                        {formatCurrency(selectedMember.previousDepositBalance)} - {formatCurrency(selectedMember.deductedAmount)}
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold text-sm text-[var(--on-surface)]">
+                      {formatCurrency(selectedMember.depositAfter)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div>
+                      <span className="font-extrabold text-[var(--on-surface)] block">{t.statusLabel}</span>
+                      <span className="text-[11px] text-[var(--on-surface-variant)]">
+                        {language === 'km' ? 'ចំណាត់ថ្នាក់ប្រតិបត្តិការផ្លូវការ' : 'Official transaction classification'}
+                      </span>
+                    </div>
+                    <div>
+                      {selectedMember.isPaidInFull ? (
+                        <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold inline-flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                          {t.paidInFull}
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 rounded-full bg-red-500/15 text-red-700 dark:text-red-400 text-xs font-bold inline-flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {t.remainingOwed}: {formatCurrency(selectedMember.remainingOwed)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between p-4 px-5 border-t border-[var(--outline)]/10 bg-[var(--surface-container-low)] gap-3">
+          <div className="flex items-center gap-2 text-xs text-[var(--on-surface-variant)]">
+            <span className="material-symbols-outlined text-[18px] text-emerald-600">lock</span>
+            <span>{t.permanentRef} #{receiptData.receiptId}</span>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[44px] px-5 rounded-xl bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--on-surface)] text-xs font-bold transition-all"
+            >
+              {t.close}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadCurrent}
+              className="min-h-[44px] px-5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              <span>{t.saveSettlementReport}</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};

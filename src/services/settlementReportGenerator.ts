@@ -1,0 +1,1192 @@
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import {
+  MemberDueSummary,
+  DepositBalanceResponse,
+  ApiUser,
+  TransactionRecord,
+} from '../types/api';
+import { formatCurrency, parseCurrency } from './apiClient';
+
+export interface MemberMealItem {
+  date: string;
+  status: string;
+  foodCost: number;
+  ingredientCost: number;
+}
+
+export interface MemberReportData {
+  member: MemberDueSummary;
+  user?: ApiUser;
+  depositBalance: DepositBalanceResponse;
+  meals: MemberMealItem[];
+  poolSummary: {
+    totalFoodPrice: number;
+    totalIngredientPrice: number;
+    totalPool: number;
+    activeMembersCount: number;
+    totalMembers: number;
+  };
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  generatedAt: string;
+}
+
+export interface CombinedReportData {
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  poolSummary: {
+    totalFoodPrice: number;
+    totalIngredientPrice: number;
+    totalPool: number;
+    activeMembersCount: number;
+    totalMembers: number;
+  };
+  memberSummaries: MemberDueSummary[];
+  memberBalances: Record<string, number>;
+  generatedAt: string;
+}
+
+const BRAND_PRIMARY: [number, number, number] = [0, 79, 53]; // #004f35
+const BRAND_SECONDARY: [number, number, number] = [179, 44, 0]; // #b32c00
+const TEXT_DARK: [number, number, number] = [17, 28, 45]; // #111c2d
+const TEXT_MUTED: [number, number, number] = [100, 116, 139]; // #64748b
+const BG_LIGHT: [number, number, number] = [248, 250, 252]; // #f8fafc
+
+export function getPdfLabels(lang: 'en' | 'km' = 'en') {
+  const isKm = lang === 'km';
+  return {
+    systemTitle: 'Household Food',
+    systemSubtitle: isKm ? 'Shared Meal & Settlement System (Proponh Ahara & Tuotat)' : 'Shared Meal & Settlement System',
+    reportPreviewBadge: isKm ? 'SETTLEMENT REPORT PREVIEW (ROBAYKARN)' : 'SETTLEMENT REPORT PREVIEW',
+    preSettleEstimate: isKm ? 'PRE-SETTLE ESTIMATE (UNPAID)' : 'PRE-SETTLE ESTIMATE (UNPAID)',
+    period: isKm ? 'Period' : 'Period',
+    generated: isKm ? 'Generated' : 'Generated',
+    memberDetails: isKm ? 'MEMBER DETAILS' : 'MEMBER DETAILS',
+    poolContext: isKm ? 'HOUSEHOLD POOL CONTEXT' : 'HOUSEHOLD POOL CONTEXT',
+    settlementReceipt: isKm ? 'SETTLEMENT RECEIPT (BONGKAN-DAI TUOTAT)' : 'SETTLEMENT RECEIPT',
+    settlementReceiptMaster: isKm ? 'SETTLEMENT RECEIPT / MASTER' : 'SETTLEMENT RECEIPT (MASTER)',
+    completedRecord: isKm ? 'Official Completed Transaction Record' : 'Official Completed Transaction Record',
+    memberInfo: isKm ? 'MEMBER INFORMATION' : 'MEMBER INFORMATION',
+    transactionAuth: isKm ? 'TRANSACTION AUTHENTICATION' : 'TRANSACTION AUTHENTICATION',
+    settledBy: isKm ? 'Settled By' : 'Settled By',
+    settledAt: isKm ? 'Settled At' : 'Settled At',
+    referenceId: isKm ? 'Reference ID' : 'Reference ID',
+    statusPaidInFull: isKm ? 'STATUS: PAID IN FULL (Settled)' : 'STATUS: PAID IN FULL',
+    statusPartial: (owed: string) => isKm ? `STATUS: Partial / Insufficient Balance — Remaining: ${owed}` : `STATUS: Partial / Insufficient Balance — Remaining Owed: ${owed}`,
+    breakdownTitle: isKm ? 'SETTLEMENT TRANSACTION BREAKDOWN' : 'SETTLEMENT TRANSACTION BREAKDOWN',
+    officialRecordNotice: isKm ? 'OFFICIAL RECORD OF SETTLEMENT' : 'OFFICIAL RECORD OF SETTLEMENT',
+    amountDue: isKm ? 'Amount Due' : 'Amount Due',
+    depositBefore: isKm ? 'Deposit Before' : 'Deposit Before',
+    amountDeducted: isKm ? 'Amount Deducted' : 'Amount Deducted',
+    depositAfter: isKm ? 'Deposit After' : 'Deposit After',
+    remainingOwed: isKm ? 'Remaining Owed' : 'Remaining Owed',
+  };
+}
+
+/**
+ * Builds a single PDF Settlement Statement for an individual household member.
+ * Strictly uses real API data provided in MemberReportData.
+ */
+export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'km' = 'en'): jsPDF {
+  const labels = getPdfLabels(lang);
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let currentY = 16;
+
+  // --- 1. HEADER & BRAND ---
+  // Top brand bar
+  doc.setFillColor(...BRAND_PRIMARY);
+  doc.rect(14, currentY, 12, 12, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('HF', 20, currentY + 7.5, { align: 'center' });
+
+  // Title & Household Name
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(labels.systemTitle, 30, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(labels.systemSubtitle, 30, currentY + 11);
+
+  // Statement badge on right
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(labels.reportPreviewBadge, pageWidth - 14, currentY + 4.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...BRAND_SECONDARY);
+  doc.text(labels.preSettleEstimate, pageWidth - 14, currentY + 8.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(`${labels.period}: ${data.period.startDate} to ${data.period.endDate}`, pageWidth - 14, currentY + 12.5, { align: 'right' });
+  doc.text(`${labels.generated}: ${data.generatedAt}`, pageWidth - 14, currentY + 16.5, { align: 'right' });
+
+  currentY += 21;
+
+  // Horizontal divider
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(14, currentY, pageWidth - 14, currentY);
+  currentY += 6;
+
+  // --- 2. MEMBER INFO & HOUSEHOLD POOL SUMMARY (Side by side) ---
+  const memberBoxX = 14;
+  const memberBoxWidth = (pageWidth - 34) / 2;
+  const poolBoxX = memberBoxX + memberBoxWidth + 6;
+
+  // Member Info Card
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(memberBoxX, currentY, memberBoxWidth, 28, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('MEMBER DETAILS', memberBoxX + 4, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(`Name: ${data.member.name}`, memberBoxX + 4, currentY + 12);
+  doc.text(`Username: @${data.member.username} (ID #${data.member.memberId})`, memberBoxX + 4, currentY + 17);
+  doc.text(`Role: ${data.user?.role || 'MEMBER'}  |  Status: ${data.member.status || 'ACTIVE'}`, memberBoxX + 4, currentY + 22);
+
+  // Household Pool Summary Card (Context)
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(poolBoxX, currentY, memberBoxWidth, 28, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('HOUSEHOLD POOL CONTEXT', poolBoxX + 4, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(`Total Food Cost: ${formatCurrency(data.poolSummary.totalFoodPrice)}`, poolBoxX + 4, currentY + 12);
+  doc.text(`Total Pantry Ingredients: ${formatCurrency(data.poolSummary.totalIngredientPrice)}`, poolBoxX + 4, currentY + 17);
+  doc.text(`Total Shared Pool: ${formatCurrency(data.poolSummary.totalPool)} (${data.poolSummary.activeMembersCount} Active)`, poolBoxX + 4, currentY + 22);
+
+  currentY += 34;
+
+  // --- 3. TOTAL DUE BOX (Strictly from API memberSummaries) ---
+  const totalDueVal = parseCurrency(data.member.totalDue);
+  const foodCostVal = parseCurrency(data.member.foodCost);
+  const ingredientCostVal = parseCurrency(data.member.ingredientCost);
+  const currentDepositBal = parseCurrency(data.depositBalance.balance);
+
+  doc.setFillColor(240, 253, 244); // light green
+  doc.setDrawColor(187, 247, 208);
+  doc.roundedRect(14, currentY, pageWidth - 28, 22, 3, 3, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('PAYMENT SUMMARY (FROM GET /bills/summary)', 20, currentY + 7);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(
+    `Food Cost: ${formatCurrency(foodCostVal)}  +  Ingredient Cost: ${formatCurrency(ingredientCostVal)}  =  Total Due`,
+    20,
+    currentY + 14
+  );
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(formatCurrency(totalDueVal), pageWidth - 20, currentY + 13, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(`Current Deposit Wallet: ${formatCurrency(currentDepositBal)}`, pageWidth - 20, currentY + 18, { align: 'right' });
+
+  currentY += 28;
+
+  // --- 4. ITEMISED MEAL ATTENDANCE TABLE ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('ITEMIZED MEAL ATTENDANCE & SHARES', 14, currentY);
+  currentY += 3;
+
+  const mealRows = data.meals.map((m) => [
+    m.date,
+    m.status,
+    m.foodCost > 0 ? formatCurrency(m.foodCost) : '$0.00',
+    m.ingredientCost > 0 ? formatCurrency(m.ingredientCost) : '$0.00',
+  ]);
+
+  const totalDaysEaten = data.meals.filter((m) => m.status === 'EAT').length;
+  const sumFood = data.meals.reduce((acc, m) => acc + m.foodCost, 0);
+  const sumIngr = data.meals.reduce((acc, m) => acc + m.ingredientCost, 0);
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Date', 'Attendance Status', 'Food Share ($)', 'Ingredient Share ($)']],
+    body: mealRows.length > 0 ? mealRows : [['No meal records in this period', '-', '-', '-']],
+    foot: [
+      [
+        `Total Days Eaten: ${totalDaysEaten}`,
+        '',
+        formatCurrency(sumFood > 0 ? sumFood : foodCostVal),
+        formatCurrency(sumIngr > 0 ? sumIngr : ingredientCostVal),
+      ],
+    ],
+    theme: 'grid',
+    headStyles: {
+      fillColor: BRAND_PRIMARY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    footStyles: {
+      fillColor: BG_LIGHT,
+      textColor: BRAND_PRIMARY,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: TEXT_DARK,
+    },
+    margin: { left: 14, right: 14 },
+    didDrawPage: (hookData) => {
+      currentY = hookData.cursor?.y ? hookData.cursor.y + 8 : currentY + 30;
+    },
+  });
+
+  // Ensure currentY is updated after the table
+  const lastTableY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+  if (lastTableY) {
+    currentY = lastTableY + 8;
+  }
+
+  // --- 5. DEPOSIT WALLET TRANSACTION HISTORY (if on current page or new page) ---
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 20;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('DEPOSIT WALLET & RECENT ACTIVITY', 14, currentY);
+  currentY += 3;
+
+  const historyItems: TransactionRecord[] =
+    data.depositBalance.history || data.depositBalance.transactions || [];
+
+  // Filter transactions within the date range if dates exist
+  const relevantTxns = historyItems.filter((tx) => {
+    const dStr = tx.created_at || tx.createdAt;
+    if (!dStr) return true;
+    const date = dStr.split('T')[0];
+    return date >= data.period.startDate && date <= data.period.endDate;
+  });
+
+  const txnsToDisplay = relevantTxns.length > 0 ? relevantTxns : historyItems.slice(0, 5);
+
+  const txnRows = txnsToDisplay.map((tx) => {
+    const amt = parseCurrency(tx.amount);
+    const date = tx.created_at || tx.createdAt ? (tx.created_at || tx.createdAt)!.split('T')[0] : 'N/A';
+    return [
+      date,
+      tx.type,
+      formatCurrency(Math.abs(amt)),
+      tx.note || (tx.type === 'DEPOSIT' ? 'Prepaid Deposit' : 'Deduction'),
+      tx.balance_after !== undefined ? formatCurrency(parseCurrency(tx.balance_after)) : '-',
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Date', 'Type', 'Amount', 'Note', 'Balance After']],
+    body:
+      txnRows.length > 0
+        ? txnRows
+        : [['No transaction records in period', '-', '-', '-', '-']],
+    theme: 'grid',
+    headStyles: {
+      fillColor: [71, 85, 105], // slate
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: TEXT_DARK,
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  const lastTxTableY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+  if (lastTxTableY) {
+    currentY = lastTxTableY + 8;
+  }
+
+  // --- 6. PAYMENT INSTRUCTIONS FOOTER ---
+  if (currentY > 250) {
+    doc.addPage();
+    currentY = 20;
+  }
+
+  // Calculate settlement deadline (7 days from period end or custom)
+  const deadlineDate = new Date(data.period.endDate);
+  deadlineDate.setDate(deadlineDate.getDate() + 5);
+  const deadlineStr = deadlineDate.toISOString().split('T')[0];
+
+  doc.setFillColor(254, 242, 242); // light red/warm
+  doc.setDrawColor(254, 202, 202);
+  doc.roundedRect(14, currentY, pageWidth - 28, 26, 3, 3, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...BRAND_SECONDARY);
+  doc.text('PAYMENT INSTRUCTIONS & NOTICES', 20, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(
+    `• Please ensure an active balance of at least ${formatCurrency(totalDueVal)} by ${deadlineStr}.`,
+    20,
+    currentY + 12
+  );
+  doc.text(
+    '• Payment method: ABA Bank / Bakong transfer or Cash to Household Food Administrator.',
+    20,
+    currentY + 17
+  );
+  doc.text(
+    '• Upon settlement, the required amount will be deducted directly from your deposit balance.',
+    20,
+    currentY + 22
+  );
+
+  // Footer page numbering
+  const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_MUTED);
+    doc.text(
+      `Household Food Settlement Statement • Page ${i} of ${pageCount} • Real API Data`,
+      pageWidth / 2,
+      290,
+      { align: 'center' }
+    );
+  }
+
+  return doc;
+}
+
+/**
+ * Builds a combined Household Summary PDF covering all active residents.
+ */
+export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' | 'km' = 'en'): jsPDF {
+  const labels = getPdfLabels(lang);
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let currentY = 16;
+
+  // Brand header
+  doc.setFillColor(...BRAND_PRIMARY);
+  doc.rect(14, currentY, 12, 12, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('HF', 20, currentY + 7.5, { align: 'center' });
+
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(labels.systemTitle, 30, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(labels.systemSubtitle, 30, currentY + 11);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(labels.reportPreviewBadge, pageWidth - 14, currentY + 4.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...BRAND_SECONDARY);
+  doc.text('PRE-SETTLE ESTIMATE (UNPAID)', pageWidth - 14, currentY + 8.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(`Period: ${data.period.startDate} to ${data.period.endDate}`, pageWidth - 14, currentY + 12.5, { align: 'right' });
+  doc.text(`Generated: ${data.generatedAt}`, pageWidth - 14, currentY + 16.5, { align: 'right' });
+
+  currentY += 21;
+
+  // Divider
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(14, currentY, pageWidth - 14, currentY);
+  currentY += 6;
+
+  // Pool Context Cards (3 columns)
+  const colWidth = (pageWidth - 28 - 8) / 3;
+
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(14, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('FOOD EXPENSES', 18, currentY + 6);
+  doc.setFontSize(14);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(formatCurrency(data.poolSummary.totalFoodPrice), 18, currentY + 16);
+
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(14 + colWidth + 4, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('PANTRY INGREDIENTS', 18 + colWidth + 4, currentY + 6);
+  doc.setFontSize(14);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(formatCurrency(data.poolSummary.totalIngredientPrice), 18 + colWidth + 4, currentY + 16);
+
+  doc.setFillColor(240, 253, 244);
+  doc.roundedRect(14 + (colWidth + 4) * 2, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('TOTAL POOL DUE', 18 + (colWidth + 4) * 2, currentY + 6);
+  doc.setFontSize(14);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(formatCurrency(data.poolSummary.totalPool), 18 + (colWidth + 4) * 2, currentY + 16);
+
+  currentY += 28;
+
+  // Member Summary Table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('PER-MEMBER SETTLEMENT SUMMARY (FROM GET /bills/summary)', 14, currentY);
+  currentY += 3;
+
+  const rows = data.memberSummaries.map((m) => {
+    const bal = data.memberBalances[String(m.memberId)] ?? 0;
+    const due = parseCurrency(m.totalDue);
+    const food = parseCurrency(m.foodCost);
+    const ingr = parseCurrency(m.ingredientCost);
+
+    return [
+      `#${m.memberId}`,
+      m.name,
+      `@${m.username}`,
+      String(m.daysEaten),
+      formatCurrency(food),
+      formatCurrency(ingr),
+      formatCurrency(due),
+      formatCurrency(bal),
+      bal >= due ? 'Covered' : 'Needs Top-up',
+    ];
+  });
+
+  const totalDueSum = data.memberSummaries.reduce(
+    (acc, m) => acc + parseCurrency(m.totalDue),
+    0
+  );
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [
+      ['ID', 'Name', 'Username', 'Days', 'Food ($)', 'Ingr ($)', 'Total Due', 'Current Bal', 'Status'],
+    ],
+    body: rows,
+    foot: [
+      [
+        'Totals',
+        `${data.memberSummaries.length} members`,
+        '',
+        '',
+        formatCurrency(data.poolSummary.totalFoodPrice),
+        formatCurrency(data.poolSummary.totalIngredientPrice),
+        formatCurrency(totalDueSum),
+        '',
+        '',
+      ],
+    ],
+    theme: 'grid',
+    headStyles: {
+      fillColor: BRAND_PRIMARY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    footStyles: {
+      fillColor: BG_LIGHT,
+      textColor: BRAND_PRIMARY,
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      textColor: TEXT_DARK,
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  // Footer page numbering
+  const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_MUTED);
+    doc.text(
+      `Household Master Settlement Summary • Page ${i} of ${pageCount} • Real API Data`,
+      pageWidth / 2,
+      290,
+      { align: 'center' }
+    );
+  }
+
+  return doc;
+}
+
+/**
+ * Downloads a generated jsPDF document directly to the client's file system.
+ */
+export function downloadPdf(doc: jsPDF, filename: string): void {
+  doc.save(filename);
+}
+
+/**
+ * Opens a print dialog for the generated jsPDF document.
+ */
+export function printPdf(doc: jsPDF): void {
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = blobUrl;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+        URL.revokeObjectURL(blobUrl);
+      }, 2000);
+    }, 100);
+  };
+}
+
+/**
+ * Shares the PDF using the Web Share API when supported, falling back to direct download.
+ */
+export async function sharePdf(doc: jsPDF, filename: string, title: string): Promise<boolean> {
+  const blob = doc.output('blob');
+  const file = new File([blob], filename, { type: 'application/pdf' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        title,
+        text: `Settlement Statement for ${title}`,
+        files: [file],
+      });
+      return true;
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        downloadPdf(doc, filename);
+      }
+      return false;
+    }
+  } else {
+    // Fallback: download directly
+    downloadPdf(doc, filename);
+    return false;
+  }
+}
+
+export interface PostSettlementMemberResult {
+  userId: string | number;
+  name: string;
+  username?: string;
+  totalDue: number;
+  previousDepositBalance: number;
+  deductedAmount: number;
+  depositAfter: number; // computed directly: previousDepositBalance - deductedAmount
+  remainingOwed: number; // computed directly: totalDue - deductedAmount
+  settlementStatus: string;
+  statusLabel: string;
+  isPaidInFull: boolean;
+}
+
+export interface PostSettlementReceiptData {
+  receiptId: string | number;
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  settledByName: string;
+  settledAt: string; // client-side timestamp at submit time
+  members: PostSettlementMemberResult[];
+  summary: {
+    totalDueAll: number;
+    totalDeductedAll: number;
+    totalRemainingOwedAll: number;
+    fullyPaidCount: number;
+    partialCount: number;
+    totalMembers: number;
+  };
+}
+
+/**
+ * Creates a normalized PostSettlementMemberResult from raw POST /bills/settle member fields.
+ * Computes depositAfter directly from (previousDepositBalance - deductedAmount).
+ * Computes remainingOwed directly from (totalDue - deductedAmount).
+ */
+export function createMemberReceiptItem(raw: {
+  userId: string | number;
+  name: string;
+  username?: string;
+  totalDue: number | string;
+  previousDepositBalance: number | string;
+  deductedAmount: number | string;
+  settlementStatus?: string;
+}): PostSettlementMemberResult {
+  const totalDue = parseCurrency(raw.totalDue);
+  const previousDepositBalance = parseCurrency(raw.previousDepositBalance);
+  const deductedAmount = parseCurrency(raw.deductedAmount);
+
+  // Directly computed fields (no separate re-fetch to avoid race conditions)
+  const depositAfter = Math.round((previousDepositBalance - deductedAmount) * 100) / 100;
+  const remainingOwed = Math.max(0, Math.round((totalDue - deductedAmount) * 100) / 100);
+
+  const rawStatus = String(raw.settlementStatus || '').toUpperCase();
+  const isPaidInFull =
+    rawStatus === 'SUCCESSFULLY_DEDUCTED' ||
+    rawStatus === 'PAID_IN_FULL' ||
+    remainingOwed <= 0.001;
+
+  const statusLabel = isPaidInFull
+    ? 'Paid in Full'
+    : `Partial / Insufficient Balance — Remaining Owed: ${formatCurrency(remainingOwed)}`;
+
+  return {
+    userId: raw.userId,
+    name: raw.name,
+    username: raw.username,
+    totalDue,
+    previousDepositBalance,
+    deductedAmount,
+    depositAfter,
+    remainingOwed,
+    settlementStatus: raw.settlementStatus || (isPaidInFull ? 'SUCCESSFULLY_DEDUCTED' : 'INSUFFICIENT_DEPOSIT_PARTIAL_OR_DEBT'),
+    statusLabel,
+    isPaidInFull,
+  };
+}
+
+/**
+ * Builds a single-member official Settlement Receipt PDF.
+ * This is an authoritative, completed transaction record created from POST /bills/settle.
+ */
+export function buildMemberSettlementReceiptPdf(
+  receiptData: PostSettlementReceiptData,
+  member: PostSettlementMemberResult,
+  lang: 'en' | 'km' = 'en'
+): jsPDF {
+  const labels = getPdfLabels(lang);
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let currentY = 16;
+
+  // --- 1. HEADER & BRAND ---
+  // Top brand bar
+  doc.setFillColor(...BRAND_PRIMARY);
+  doc.rect(14, currentY, 12, 12, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('HF', 20, currentY + 7.5, { align: 'center' });
+
+  // Title & Subtitle
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(labels.systemTitle, 30, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(labels.completedRecord, 30, currentY + 11);
+
+  // Settlement Receipt Header on Right
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(labels.settlementReceipt, pageWidth - 14, currentY + 5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...BRAND_SECONDARY);
+  doc.text(`Permanent Record Ref: #${receiptData.receiptId}`, pageWidth - 14, currentY + 10, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(`Period: ${receiptData.period.startDate} to ${receiptData.period.endDate}`, pageWidth - 14, currentY + 14.5, { align: 'right' });
+
+  currentY += 21;
+
+  // Horizontal divider
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(14, currentY, pageWidth - 14, currentY);
+  currentY += 6;
+
+  // --- 2. METADATA CARDS (Side by side) ---
+  const boxWidth = (pageWidth - 34) / 2;
+  const leftX = 14;
+  const rightX = leftX + boxWidth + 6;
+
+  // Member Information
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(leftX, currentY, boxWidth, 26, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('MEMBER INFORMATION', leftX + 4, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(`Member Name: ${member.name}`, leftX + 4, currentY + 12);
+  doc.text(`User ID: #${member.userId}${member.username ? ` (@${member.username})` : ''}`, leftX + 4, currentY + 17);
+  doc.text('Account Type: Resident Member Wallet', leftX + 4, currentY + 22);
+
+  // Settlement Transaction Metadata
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(rightX, currentY, boxWidth, 26, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('TRANSACTION AUTHENTICATION', rightX + 4, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(`Settled By: ${receiptData.settledByName}`, rightX + 4, currentY + 12);
+  doc.text(`Settled At: ${receiptData.settledAt}`, rightX + 4, currentY + 17);
+  doc.text(`Reference ID: Settlement #${receiptData.receiptId}`, rightX + 4, currentY + 22);
+
+  currentY += 32;
+
+  // --- 3. STATUS BANNER ---
+  if (member.isPaidInFull) {
+    // Green Paid In Full Banner
+    doc.setFillColor(240, 253, 244);
+    doc.setDrawColor(187, 247, 208);
+    doc.roundedRect(14, currentY, pageWidth - 28, 16, 3, 3, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(22, 101, 52); // emerald-800
+    doc.text('STATUS: PAID IN FULL', 20, currentY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(21, 128, 61); // emerald-700
+    doc.text(
+      'All meal and pantry shares have been successfully deducted from your prepaid deposit wallet.',
+      20,
+      currentY + 12
+    );
+  } else {
+    // Red Partial / Insufficient Balance Banner
+    doc.setFillColor(254, 242, 242);
+    doc.setDrawColor(254, 202, 202);
+    doc.roundedRect(14, currentY, pageWidth - 28, 18, 3, 3, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(185, 28, 28); // red-700
+    doc.text(
+      `STATUS: Partial / Insufficient Balance — Remaining Owed: ${formatCurrency(member.remainingOwed)}`,
+      20,
+      currentY + 7
+    );
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(153, 27, 27); // red-800
+    doc.text(
+      `Only ${formatCurrency(member.deductedAmount)} could be deducted. Please top up ${formatCurrency(member.remainingOwed)} to clear your outstanding balance.`,
+      20,
+      currentY + 13
+    );
+  }
+
+  currentY += 23;
+
+  // --- 4. AUTHORITATIVE LEDGER BREAKDOWN (Real POST /bills/settle numbers) ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('SETTLEMENT TRANSACTION BREAKDOWN', 14, currentY);
+  currentY += 4;
+
+  const ledgerRows = [
+    [
+      'Amount Due',
+      formatCurrency(member.totalDue),
+      'Authoritative calculated charge at settlement time',
+    ],
+    [
+      'Deposit Before',
+      formatCurrency(member.previousDepositBalance),
+      'Member prepaid deposit wallet balance prior to settlement',
+    ],
+    [
+      'Amount Deducted',
+      `-${formatCurrency(member.deductedAmount)}`,
+      'Amount debited from wallet during this settlement run',
+    ],
+    [
+      'Deposit After',
+      formatCurrency(member.depositAfter),
+      'Directly computed remaining wallet balance (Before - Deducted)',
+    ],
+    [
+      'Remaining Owed',
+      member.remainingOwed > 0 ? formatCurrency(member.remainingOwed) : '$0.00',
+      member.remainingOwed > 0
+        ? 'Outstanding balance due immediately to household administrator'
+        : 'Zero balance owed — fully settled',
+    ],
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Item / Ledger Field', 'Amount (USD)', 'Description & Verification']],
+    body: ledgerRows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: BRAND_PRIMARY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 9,
+    },
+    bodyStyles: {
+      fontSize: 8.5,
+      textColor: TEXT_DARK,
+    },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 50 },
+      1: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },
+      2: { textColor: TEXT_MUTED },
+    },
+    margin: { left: 14, right: 14 },
+    didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        if (hookData.row.index === 0 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = BRAND_PRIMARY;
+        }
+        if (hookData.row.index === 2 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = [185, 28, 28]; // red deduction
+        }
+        if (hookData.row.index === 3 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = member.depositAfter < 0 ? [185, 28, 28] : [22, 101, 52];
+        }
+        if (hookData.row.index === 4 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = member.remainingOwed > 0 ? [185, 28, 28] : [22, 101, 52];
+        }
+      }
+    },
+  });
+
+  const lastTableY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+  if (lastTableY) {
+    currentY = lastTableY + 10;
+  }
+
+  // --- 5. RECEIPT AUTHENTICITY NOTICE ---
+  doc.setFillColor(...BG_LIGHT);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(14, currentY, pageWidth - 28, 26, 3, 3, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('OFFICIAL RECORD OF SETTLEMENT', 20, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT_DARK);
+  doc.text(
+    `• This document is an official Settlement Receipt generated from the actual response of POST /bills/settle.`,
+    20,
+    currentY + 12
+  );
+  doc.text(
+    `• It reflects the frozen transaction data recorded at settlement time (Reference #${receiptData.receiptId}), distinguishing it from an unpaid estimate.`,
+    20,
+    currentY + 17
+  );
+  doc.text(
+    `• Questions or deposit top-ups should be directed to the administrator: ${receiptData.settledByName}.`,
+    20,
+    currentY + 22
+  );
+
+  // Footer page numbering
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(
+    `Settlement Receipt • Record #${receiptData.receiptId} • Member: ${member.name} • Completed Transaction`,
+    pageWidth / 2,
+    290,
+    { align: 'center' }
+  );
+
+  return doc;
+}
+
+/**
+ * Builds a master Household Settlement Receipt PDF covering all members from POST /bills/settle response.
+ */
+export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementReceiptData, lang: 'en' | 'km' = 'en'): jsPDF {
+  const labels = getPdfLabels(lang);
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let currentY = 16;
+
+  // Brand header
+  doc.setFillColor(...BRAND_PRIMARY);
+  doc.rect(14, currentY, 12, 12, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('HF', 20, currentY + 7.5, { align: 'center' });
+
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(labels.systemTitle, 30, currentY + 6);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(labels.completedRecord, 30, currentY + 11);
+
+  // Right Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(labels.settlementReceiptMaster, pageWidth - 14, currentY + 5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...BRAND_SECONDARY);
+  doc.text(`Record Ref: #${receiptData.receiptId}`, pageWidth - 14, currentY + 10, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text(`Period: ${receiptData.period.startDate} to ${receiptData.period.endDate}`, pageWidth - 14, currentY + 14.5, { align: 'right' });
+
+  currentY += 21;
+
+  // Divider
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(14, currentY, pageWidth - 14, currentY);
+  currentY += 6;
+
+  // Metadata Card
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(14, currentY, pageWidth - 28, 14, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(
+    `Settled By: ${receiptData.settledByName}  |  Settled At: ${receiptData.settledAt}  |  Settlement Reference: #${receiptData.receiptId}`,
+    20,
+    currentY + 9
+  );
+  currentY += 18;
+
+  // Key Totals Cards (3 columns)
+  const colWidth = (pageWidth - 28 - 8) / 3;
+
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(14, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('TOTAL AMOUNT DUE', 18, currentY + 6);
+  doc.setFontSize(13);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text(formatCurrency(receiptData.summary.totalDueAll), 18, currentY + 16);
+
+  doc.setFillColor(...BG_LIGHT);
+  doc.roundedRect(14 + colWidth + 4, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('TOTAL AMOUNT DEDUCTED', 18 + colWidth + 4, currentY + 6);
+  doc.setFontSize(13);
+  doc.setTextColor(22, 101, 52); // green
+  doc.text(formatCurrency(receiptData.summary.totalDeductedAll), 18 + colWidth + 4, currentY + 16);
+
+  if (receiptData.summary.totalRemainingOwedAll > 0) {
+    doc.setFillColor(254, 242, 242);
+  } else {
+    doc.setFillColor(240, 253, 244);
+  }
+  doc.roundedRect(14 + (colWidth + 4) * 2, currentY, colWidth, 22, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_MUTED);
+  doc.text('TOTAL REMAINING OWED', 18 + (colWidth + 4) * 2, currentY + 6);
+  doc.setFontSize(13);
+  if (receiptData.summary.totalRemainingOwedAll > 0) {
+    doc.setTextColor(185, 28, 28);
+  } else {
+    doc.setTextColor(22, 101, 52);
+  }
+  doc.text(formatCurrency(receiptData.summary.totalRemainingOwedAll), 18 + (colWidth + 4) * 2, currentY + 16);
+
+  currentY += 28;
+
+  // Member Table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...BRAND_PRIMARY);
+  doc.text('PER-MEMBER SETTLEMENT EXECUTION LEDGER', 14, currentY);
+  currentY += 3;
+
+  const rows = receiptData.members.map((m) => [
+    `#${m.userId}`,
+    m.name,
+    formatCurrency(m.totalDue),
+    formatCurrency(m.previousDepositBalance),
+    formatCurrency(m.deductedAmount),
+    formatCurrency(m.depositAfter),
+    m.isPaidInFull ? 'Paid in Full' : `Partial (Owed: ${formatCurrency(m.remainingOwed)})`,
+  ]);
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [
+      ['UID', 'Name', 'Amount Due', 'Deposit Before', 'Deducted', 'Deposit After', 'Settlement Status'],
+    ],
+    body: rows,
+    foot: [
+      [
+        'Totals',
+        `${receiptData.members.length} members`,
+        formatCurrency(receiptData.summary.totalDueAll),
+        '-',
+        formatCurrency(receiptData.summary.totalDeductedAll),
+        '-',
+        receiptData.summary.totalRemainingOwedAll > 0
+          ? `Owed: ${formatCurrency(receiptData.summary.totalRemainingOwedAll)}`
+          : 'All Settled',
+      ],
+    ],
+    theme: 'grid',
+    headStyles: {
+      fillColor: BRAND_PRIMARY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    footStyles: {
+      fillColor: BG_LIGHT,
+      textColor: BRAND_PRIMARY,
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      textColor: TEXT_DARK,
+    },
+    columnStyles: {
+      2: { halign: 'right' },
+      3: { halign: 'right' },
+      4: { halign: 'right' },
+      5: { halign: 'right' },
+    },
+    margin: { left: 14, right: 14 },
+    didParseCell: (hookData) => {
+      if (hookData.section === 'body' && hookData.column.index === 6) {
+        const row = receiptData.members[hookData.row.index];
+        if (row && !row.isPaidInFull) {
+          hookData.cell.styles.textColor = [185, 28, 28];
+          hookData.cell.styles.fontStyle = 'bold';
+        } else {
+          hookData.cell.styles.textColor = [22, 101, 52];
+        }
+      }
+    },
+  });
+
+  // Footer page numbering
+  const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT_MUTED);
+    doc.text(
+      `Master Settlement Receipt • Ref #${receiptData.receiptId} • Page ${i} of ${pageCount} • Completed Transaction`,
+      pageWidth / 2,
+      290,
+      { align: 'center' }
+    );
+  }
+
+  return doc;
+}
+

@@ -1,357 +1,246 @@
 import React, { useState } from 'react';
-import { ApiUser, MealStatusRecord, DailyCostRecord } from '../api/types';
-import { useLanguage } from '../context/LanguageContext';
+import { useApp } from '../context/AppContext';
+import { formatCurrency, parseCurrency } from '../services/apiClient';
 
-interface MealsScreenProps {
-  currentUser: ApiUser | null;
-  mealStatuses: MealStatusRecord[];
-  dailyCosts: DailyCostRecord[];
-  members: ApiUser[];
-  isLoading: boolean;
-  error: string | null;
-  onRetry: () => void;
-  onToggleMealStatus: (status: 'EAT' | 'NOT_EAT', dateStr?: string) => Promise<void>;
-  onOpenAuth: () => void;
-  onShowToast: (msg: string, icon?: string) => void;
-}
+export const MealsScreen: React.FC = () => {
+  const {
+    currentUser,
+    members,
+    dailyCosts,
+    mealStatuses,
+    toggleMealStatus,
+    language,
+    t,
+  } = useApp();
 
-export const MealsScreen: React.FC<MealsScreenProps> = ({
-  currentUser,
-  mealStatuses,
-  dailyCosts,
-  members,
-  isLoading,
-  error,
-  onRetry,
-  onToggleMealStatus,
-  onOpenAuth,
-  onShowToast,
-}) => {
-  const { language, t } = useLanguage();
   const todayStr = new Date().toISOString().split('T')[0];
-  const [selectedDate, setSelectedDate] = useState(todayStr);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [filterType, setFilterType] = useState<'ALL' | 'EAT' | 'NOT_EAT'>('ALL');
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Find status for selected date
-  const selectedDateRecord = mealStatuses.find((m) => {
-    const d = m.date ? m.date.split('T')[0] : '';
-    return d === selectedDate;
-  });
+  // Filter daily cost for selected date from GET /daily-costs
+  const costForDate = dailyCosts.find((c) => c.date.startsWith(selectedDate));
+  const foodPrice = parseCurrency(costForDate?.food_price ?? costForDate?.foodPrice ?? 0);
+  const ingredientPrice = parseCurrency(
+    costForDate?.ingredient_price ?? costForDate?.ingredientPrice ?? 0
+  );
+  const totalCostForDate = foodPrice + ingredientPrice;
 
-  const handleStatusChange = async (status: 'EAT' | 'NOT_EAT') => {
-    if (!currentUser) {
-      onShowToast(language === 'km' ? 'សូមចូលគណនីជាមុនសិន' : 'Please sign in to log meal status', 'login');
-      onOpenAuth();
-      return;
-    }
+  // Filter statuses for selected date from GET /meal-statuses
+  const recordsForDate = mealStatuses.filter((s) => s.date.startsWith(selectedDate));
+  const eatersForDate = recordsForDate.filter((s) => s.status === 'EAT');
+  const eatersCount = eatersForDate.length;
 
-    setIsSubmitting(true);
+  // Current user's status for selected date
+  const myRecordForDate = recordsForDate.find(
+    (s) =>
+      String(s.memberId) === String(currentUser?.id) ||
+      String(s.member_id) === String(currentUser?.id)
+  );
+  const myStatus = myRecordForDate ? myRecordForDate.status : null;
+
+  // Cost per eater for food pool on this date
+  const costPerEater = eatersCount > 0 ? foodPrice / eatersCount : 0;
+
+  const handleToggle = async (status: 'EAT' | 'NOT_EAT') => {
     try {
-      await onToggleMealStatus(status, selectedDate);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const fmtDate = (dStr?: string) => {
-    if (!dStr) return '';
-    try {
-      const clean = dStr.split('T')[0];
-      const [y, m, d] = clean.split('-');
-      const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-      return dateObj.toLocaleDateString(language === 'km' ? 'km-KH' : undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
+      await toggleMealStatus(selectedDate, status);
     } catch {
-      return dStr;
+      // handled
     }
   };
 
-  const fmtCurrency = (val?: string | number | null) => {
-    if (!val) return '$0.00';
-    const num = typeof val === 'string' ? parseFloat(val) : val;
-    return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
-  };
-
-  // Filtered records
-  const filteredRecords = mealStatuses.filter((record) => {
-    if (filterType === 'ALL') return true;
-    return record.status === filterType;
-  });
-
-  // Find matching daily cost for selected date if exists
-  const costForSelectedDate = dailyCosts.find((c) => {
-    const d = c.date ? c.date.split('T')[0] : '';
-    return d === selectedDate;
+  // Generate recent 7 days dates strictly for date strip
+  const dateOptions = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
   });
 
   return (
-    <div className="flex flex-col w-full px-screen-gutter md:px-8 lg:px-10 pb-8 gap-y-4 max-w-lg md:max-w-3xl lg:max-w-6xl mx-auto">
+    <div className="w-full flex flex-col space-y-6 pb-28 min-[600px]:pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between pt-2">
-        <div>
-          <h1 className="font-headline-md text-headline-md md:text-2xl lg:text-3xl text-on-surface font-bold tracking-tight">
-            {t.meals.title}
-          </h1>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">
-            {t.meals.subtitle}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+        <div className="flex flex-col space-y-0.5">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-[var(--on-surface)] tracking-tight">
+              {t.mealAttendance}
+            </h1>
+            <span className="font-normal text-xs text-[var(--on-surface-variant)] hidden sm:inline">
+              / {t.mealAttendanceKh}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--on-surface-variant)]">
+            {t.mealsSubtitle}
           </p>
         </div>
 
-        {!currentUser && (
-          <button
-            type="button"
-            onClick={onOpenAuth}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-on-primary font-label-md text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[16px]">login</span>
-            <span>{t.common.signIn}</span>
-          </button>
-        )}
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold shadow-xs w-fit">
+          <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
+          GET /meal-statuses
+        </span>
       </div>
 
-      {/* Loading State Banner */}
-      {isLoading && (
-        <div className="p-4 rounded-2xl bg-surface-container border border-surface-container-high/60 flex items-center justify-center gap-3 animate-pulse">
-          <span className="material-symbols-outlined text-primary text-[22px] animate-spin">sync</span>
-          <span className="font-label-md text-label-md text-on-surface font-medium">
-            {t.common.loading}
-          </span>
-        </div>
-      )}
+      {/* Date Strip Navigation */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {dateOptions.map((dateStr) => {
+          const isSelected = selectedDate === dateStr;
+          const isToday = dateStr === todayStr;
+          const dayName = new Date(dateStr).toLocaleDateString(language === 'km' ? 'km-KH' : 'en-US', { weekday: 'short' });
+          const dayNum = dateStr.slice(8);
 
-      {/* Error State Banner with Retry */}
-      {error && (
-        <div className="p-4 rounded-2xl bg-error-container/20 border border-error/20 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-error">
-            <span className="material-symbols-outlined text-[20px]">error</span>
-            <span className="font-label-md text-label-md font-bold">{t.common.error}</span>
-          </div>
-          <p className="font-body-sm text-xs text-on-surface-variant">{error}</p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="self-start mt-1 px-3.5 py-1.5 rounded-xl bg-error text-on-error font-label-sm text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-[14px]">refresh</span>
-            <span>{t.common.retry}</span>
-          </button>
-        </div>
-      )}
-
-      {/* Date Picker + Attendance Records — side by side on desktop (lg+) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-
-        {/* Date Picker & Selection */}
-        <div className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm p-4 gap-3 border border-surface-container-high/40 h-full">
-          <div className="flex items-center justify-between">
-            <label className="font-label-md text-sm font-semibold text-on-surface flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-primary text-[18px]">calendar_today</span>
-              <span>{t.meals.selectDate}</span>
-            </label>
-
-            {selectedDate === todayStr && (
-              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-label-sm text-[10px] font-bold">
-                {t.common.today.toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="flex-1 h-11 px-3 rounded-xl bg-surface-container-low border border-surface-container-high text-on-surface text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+          return (
             <button
-              type="button"
-              onClick={() => setSelectedDate(todayStr)}
-              className="h-11 px-3.5 rounded-xl bg-surface-container text-on-surface text-xs font-bold hover:bg-surface-container-high transition-colors"
+              key={dateStr}
+              onClick={() => setSelectedDate(dateStr)}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[56px] py-1.5 px-2 rounded-2xl transition-all flex-shrink-0 active:scale-95 ${
+                isSelected
+                  ? 'bg-[var(--primary)] text-white shadow-sm font-bold'
+                  : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]'
+              }`}
             >
-              {t.common.today}
+              <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                {isToday ? t.today : dayName}
+              </span>
+              <span className="text-base font-extrabold">{dayNum}</span>
             </button>
-          </div>
+          );
+        })}
 
-          {/* Selected Date Card & Actions: POST /meal-statuses */}
-          <div className="mt-2 p-3.5 rounded-xl bg-surface-container-low border border-surface-container-high/50 flex flex-col gap-3">
+        {/* Custom date input */}
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="min-h-[56px] px-3 rounded-2xl bg-[var(--surface-container-low)] text-xs font-bold text-[var(--on-surface)] outline-none border border-[var(--outline)]/10 flex-shrink-0"
+        />
+      </div>
+
+      {/* Side-by-Side Responsive Layout on tablet & desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Meal Card & User Attendance Action */}
+        <div className="lg:col-span-5 flex flex-col space-y-5">
+          {/* Dinner Info Card */}
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004f35] via-[#006948] to-[#004f35] text-white p-5 shadow-lg border border-white/10">
+            <div className="relative z-10 flex flex-col space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#9ff4ca]">
+                    {t.date}: {selectedDate}
+                  </span>
+                  <h2 className="text-xl font-bold text-white mt-1">
+                    {eatersCount} {t.dinersConfirmed}
+                  </h2>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold">
+                  {totalCostForDate > 0 ? formatCurrency(totalCostForDate) : t.noCost}
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-4xl font-extrabold text-white tracking-tight">
+                    {formatCurrency(costPerEater)}
+                  </span>
+                  <span className="text-xs font-bold text-[#9ff4ca]">{t.perDiner}</span>
+                </div>
+                <p className="text-xs text-[#9ff4ca]/80 mt-1">
+                  {t.foodPrep}: {formatCurrency(foodPrice)} | {t.ingredientPantry}: {formatCurrency(ingredientPrice)}
+                </p>
+              </div>
+
+              {/* Action Buttons (min 48px tap targets) */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => handleToggle('EAT')}
+                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                    myStatus === 'EAT'
+                      ? 'bg-white text-[var(--primary)] shadow-md'
+                      : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">check_circle</span>
+                  <span>{t.eatTonight}</span>
+                </button>
+
+                <button
+                  onClick={() => handleToggle('NOT_EAT')}
+                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                    myStatus === 'NOT_EAT'
+                      ? 'bg-[var(--secondary)] text-white shadow-md'
+                      : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">cancel</span>
+                  <span>{t.skipMeal}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Attendance Ledger */}
+        <div className="lg:col-span-7 flex flex-col space-y-4">
+          <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="font-title-md text-sm font-bold text-on-surface">
-                  {fmtDate(selectedDate)}
-                </span>
-                <span className="font-body-sm text-xs text-on-surface-variant">
-                  {selectedDateRecord
-                    ? `${t.meals.status}: ${selectedDateRecord.status === 'EAT' ? t.dashboard.eating : t.dashboard.skipping}`
-                    : t.meals.noAttendanceChoice}
+                <h3 className="text-base font-bold text-[var(--on-surface)]">
+                  {t.attendanceLedger} ({selectedDate})
+                </h3>
+                <span className="text-xs text-[var(--on-surface-variant)]">
+                  {t.liveEntriesFromApi}
                 </span>
               </div>
-
-              {selectedDateRecord && (
-                <span
-                  className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${
-                    selectedDateRecord.status === 'EAT'
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-stone-500/15 text-stone-600 dark:text-stone-300'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[14px]">
-                    {selectedDateRecord.status === 'EAT' ? 'check_circle' : 'cancel'}
-                  </span>
-                  <span>{selectedDateRecord.status === 'EAT' ? t.dashboard.eating : t.dashboard.skipping}</span>
-                </span>
-              )}
+              <span className="px-3 py-1 rounded-full bg-[var(--surface-container)] text-[var(--on-surface)] text-xs font-bold">
+                {recordsForDate.length} {t.records}
+              </span>
             </div>
 
-            {/* Daily cost details if logged */}
-            {costForSelectedDate && (
-              <div className="p-2.5 rounded-lg bg-surface-container-lowest text-xs text-on-surface flex items-center justify-between">
-                <span>{t.meals.daysPoolCost}:</span>
-                <span className="font-bold">
-                  {t.common.food} {fmtCurrency(costForSelectedDate.foodPrice ?? costForSelectedDate.food_price)} +{' '}
-                  {t.common.pantry} {fmtCurrency(costForSelectedDate.ingredientPrice ?? costForSelectedDate.ingredient_price)}
-                </span>
+            {recordsForDate.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[var(--on-surface-variant)]">
+                {t.noAttendanceRecords}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recordsForDate.map((rec) => {
+                  const mId = rec.memberId || rec.member_id;
+                  const matchedMember = members.find((m) => String(m.id) === String(mId));
+                  const isEater = rec.status === 'EAT';
+                  const isMe = String(mId) === String(currentUser?.id);
+
+                  return (
+                    <div
+                      key={rec.id || mId}
+                      className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 text-xs"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 min-w-[40px] rounded-full bg-[var(--surface-container-highest)] flex items-center justify-center font-bold text-xs text-[var(--on-surface)] flex-shrink-0">
+                          {matchedMember?.name?.slice(0, 2).toUpperCase() || 'MB'}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-sm text-[var(--on-surface)] truncate">
+                            {matchedMember?.name || `Member #${mId}`} {isMe && ` ${t.you}`}
+                          </span>
+                          <span className="text-[11px] text-[var(--on-surface-variant)] truncate">
+                            @{matchedMember?.username || 'resident'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-3 py-1 rounded-full font-bold text-xs flex-shrink-0 ml-2 ${
+                          isEater
+                            ? 'bg-[var(--primary)]/15 text-[var(--primary)]'
+                            : 'bg-[var(--error)]/15 text-[var(--error)]'
+                        }`}
+                      >
+                        {isEater ? t.eating : t.skipping}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
-
-            {/* Action buttons calling POST /meal-statuses */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleStatusChange('EAT')}
-                className={`flex-1 h-11 rounded-xl font-label-md text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
-                  selectedDateRecord?.status === 'EAT'
-                    ? 'bg-primary text-on-primary ring-2 ring-primary ring-offset-1'
-                    : 'bg-primary/10 text-primary hover:bg-primary/20'
-                } ${isSubmitting ? 'opacity-50' : 'active:scale-98'}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                <span>{t.dashboard.eatTonight}</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleStatusChange('NOT_EAT')}
-                className={`flex-1 h-11 rounded-xl font-label-md text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
-                  selectedDateRecord?.status === 'NOT_EAT'
-                    ? 'bg-secondary text-on-secondary ring-2 ring-secondary ring-offset-1'
-                    : 'bg-surface-container text-on-surface hover:bg-surface-container-high'
-                } ${isSubmitting ? 'opacity-50' : 'active:scale-98'}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">cancel</span>
-                <span>{t.dashboard.skipMeal}</span>
-              </button>
-            </div>
           </div>
         </div>
-
-        {/* Meal Attendance Records History: GET /meal-statuses */}
-        <div className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm p-4 gap-3 border border-surface-container-high/40 h-full">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h2 className="font-title-md text-title-md text-on-surface font-bold">
-                {t.meals.recordsTitle}
-              </h2>
-              <p className="font-body-sm text-xs text-on-surface-variant">
-                {mealStatuses.length} {t.dashboard.recordsLogged}
-              </p>
-            </div>
-
-            {/* Filter tabs */}
-            <div className="flex bg-surface-container-low p-1 rounded-xl gap-1">
-              {(['ALL', 'EAT', 'NOT_EAT'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setFilterType(mode)}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                    filterType === mode
-                      ? 'bg-surface-container-lowest text-primary shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  {mode === 'ALL' ? t.meals.all : mode === 'EAT' ? t.meals.eaten : t.meals.skipped}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {filteredRecords.length === 0 && !isLoading && (
-            <div className="py-8 text-center text-xs text-on-surface-variant flex flex-col items-center gap-1">
-              <span className="material-symbols-outlined text-[28px] opacity-40">restaurant</span>
-              <span>{t.meals.noRecords}</span>
-              <span className="opacity-75">{t.meals.useButtonsAbove}</span>
-            </div>
-          )}
-
-          <div className="flex flex-col divide-y divide-surface-container-high/40 lg:max-h-[560px] lg:overflow-y-auto lg:pr-1">
-            {filteredRecords.map((record) => {
-              const isEat = record.status === 'EAT';
-              // Match member if member_id exists
-              const memberMatch = members.find(
-                (m) => String(m.id) === String(record.member_id || record.memberId)
-              );
-
-              return (
-                <div key={record.id || `${record.date}-${record.status}`} className="py-2.5 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                        isEat ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-stone-500/15 text-stone-600 dark:text-stone-300'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[20px]">
-                        {isEat ? 'restaurant' : 'fastfood'}
-                      </span>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-label-md text-sm font-semibold text-on-surface">
-                          {fmtDate(record.date)}
-                        </span>
-                        {record.confirmation_type && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant uppercase font-medium">
-                            {record.confirmation_type}
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-body-sm text-xs text-on-surface-variant block truncate">
-                        {memberMatch ? `${memberMatch.name} (@${memberMatch.username})` : 'User ID: ' + (record.member_id || record.memberId || 'Me')}
-                        {record.confirmed_at && ` • ${new Date(record.confirmed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end shrink-0">
-                    <span
-                      className={`font-label-sm text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        isEat
-                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                          : 'bg-stone-500/15 text-stone-600 dark:text-stone-300'
-                      }`}
-                    >
-                      {isEat ? t.dashboard.eating : t.dashboard.skipping}
-                    </span>
-
-                    {record.cost_total && (
-                      <span className="font-title-md text-xs font-semibold text-on-surface mt-0.5">
-                        {fmtCurrency(record.cost_total)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
       </div>
     </div>
   );

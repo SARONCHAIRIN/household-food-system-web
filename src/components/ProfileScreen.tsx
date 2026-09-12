@@ -1,336 +1,435 @@
-import React from 'react';
-import { ApiUser } from '../api/types';
-import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { useApp } from '../context/AppContext';
+import { UserStatus } from '../types/api';
 
-interface ProfileScreenProps {
-  currentUser: ApiUser | null;
-  onUpdateStatus: (status: 'ACTIVE' | 'INACTIVE') => void;
-  onLogout: () => void;
-  onOpenAuth: () => void;
-  onShowToast: (msg: string, icon?: string) => void;
-}
+export const ProfileScreen: React.FC = () => {
+  const {
+    currentUser,
+    userRole,
+    members,
+    updateMemberStatus,
+    language,
+    setLanguage,
+    theme,
+    toggleTheme,
+    logout,
+    t,
+  } = useApp();
 
-export const ProfileScreen: React.FC<ProfileScreenProps> = ({
-  currentUser,
-  onUpdateStatus,
-  onLogout,
-  onOpenAuth,
-}) => {
-  const { language, toggleLanguage, setLanguage, t } = useLanguage();
-  const { theme, isDark, toggleTheme, setTheme } = useTheme();
+  const [diningStatus, setDiningStatus] = useState<UserStatus>(currentUser?.status || 'ACTIVE');
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | number | null>(null);
+  const [inlineConfirmation, setInlineConfirmation] = useState<string | null>(null);
+  const confirmationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  if (!currentUser) {
-    return (
-      <div className="flex flex-col w-full px-4 sm:px-6 md:px-8 pb-10 gap-y-4 max-w-xl md:max-w-2xl mx-auto">
-        <div className="pt-4">
-          <h1 className="text-2xl sm:text-3xl text-on-surface font-bold tracking-tight">
-            {t.profile.title}
-          </h1>
-          <p className="text-sm text-on-surface-variant">
-            {t.profile.subtitle}
-          </p>
-        </div>
+  // Sync state if currentUser changes from API refetch
+  useEffect(() => {
+    if (currentUser?.status) {
+      setDiningStatus(currentUser.status);
+    }
+  }, [currentUser?.status]);
 
-        <div className="mt-6 p-6 sm:p-8 rounded-3xl bg-surface-container-lowest border border-surface-container-high/60 shadow-sm flex flex-col items-center text-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-            <span className="material-symbols-outlined text-[36px]">account_circle</span>
-          </div>
-          <h2 className="text-lg sm:text-xl font-bold text-on-surface">{t.profile.notSignedIn}</h2>
-          <p className="text-xs sm:text-sm text-on-surface-variant max-w-md leading-relaxed">
-            {t.profile.notSignedInDesc}
-          </p>
-          <button
-            type="button"
-            onClick={onOpenAuth}
-            className="mt-2 px-6 py-3 rounded-full bg-primary text-on-primary text-sm font-bold shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[18px]">login</span>
-            <span>{t.common.signIn} / {t.common.register}</span>
-          </button>
-        </div>
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (confirmationTimerRef.current) clearTimeout(confirmationTimerRef.current);
+    };
+  }, []);
 
-        {/* Preferences: Language & Theme */}
-        <div className="mt-4 p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/40 flex flex-col gap-4">
-          <h3 className="text-sm sm:text-base font-bold text-on-surface">
-            {t.common.language} & {t.common.theme}
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Language Selection */}
-            <div className="p-3.5 rounded-xl bg-surface-container-low flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px] text-primary">translate</span>
-                <span className="text-xs sm:text-sm font-semibold text-on-surface">{t.common.language}</span>
-              </div>
-              <div className="flex rounded-lg bg-surface-container p-0.5 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setLanguage('en')}
-                  className={`px-2.5 py-1 rounded-md transition-all ${
-                    language === 'en' ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  EN
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLanguage('km')}
-                  className={`px-2.5 py-1 rounded-md transition-all ${
-                    language === 'km' ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  ខ្មែរ
-                </button>
-              </div>
-            </div>
-
-            {/* Theme Selection */}
-            <div className="p-3.5 rounded-xl bg-surface-container-low flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px] text-amber-500">
-                  {isDark ? 'dark_mode' : 'light_mode'}
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-on-surface">{t.common.theme}</span>
-              </div>
-              <div className="flex rounded-lg bg-surface-container p-0.5 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setTheme('light')}
-                  className={`px-2.5 py-1 rounded-md transition-all ${
-                    !isDark ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Light
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTheme('dark')}
-                  className={`px-2.5 py-1 rounded-md transition-all ${
-                    isDark ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Dark
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const isAdmin = currentUser.role === 'ADMIN';
-  const isActive = currentUser.status === 'ACTIVE';
-  const userInitial = (currentUser.name || currentUser.username).charAt(0).toUpperCase();
-
-  const handleToggleMyStatus = () => {
-    const nextStatus = isActive ? 'INACTIVE' : 'ACTIVE';
-    onUpdateStatus(nextStatus);
-  };
-
-  const fmtDate = (dStr?: string) => {
-    if (!dStr) return 'N/A';
+  const handleUpdateStatus = async (targetId: string | number, nextStatus: UserStatus) => {
+    setUpdatingMemberId(String(targetId));
     try {
-      return new Date(dStr).toLocaleDateString(language === 'km' ? 'km-KH' : undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
+      await updateMemberStatus(targetId, nextStatus);
+      if (String(targetId) === String(currentUser?.id)) {
+        setDiningStatus(nextStatus);
+        const confMsg = nextStatus === 'ACTIVE' ? t.statusUpdatedActive : t.statusUpdatedAway;
+        setInlineConfirmation(confMsg);
+        if (confirmationTimerRef.current) clearTimeout(confirmationTimerRef.current);
+        confirmationTimerRef.current = setTimeout(() => {
+          setInlineConfirmation(null);
+        }, 3500);
+      }
     } catch {
-      return dStr;
+      // error handled in updateMemberStatus toast
+    } finally {
+      setUpdatingMemberId(null);
     }
   };
 
+  const isUpdatingSelf = updatingMemberId === String(currentUser?.id);
+
   return (
-    <div className="flex flex-col w-full px-4 sm:px-6 md:px-8 pb-10 gap-y-5 max-w-xl md:max-w-2xl lg:max-w-3xl mx-auto">
+    <div className="w-full flex flex-col space-y-6 pb-28 min-[600px]:pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between pt-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl text-on-surface font-bold tracking-tight">
-            {t.profile.title}
-          </h1>
-          <p className="text-sm text-on-surface-variant">
-            {t.profile.authenticatedVia}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+        <div className="flex flex-col space-y-0.5">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-[var(--on-surface)] tracking-tight">
+              {t.accountProfile}
+            </h1>
+            <span className="font-normal text-xs text-[var(--on-surface-variant)] hidden sm:inline">
+              / {t.accountProfileKh}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--on-surface-variant)]">
+            {currentUser?.email || 'household-food-system API'}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onLogout}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-error-container/20 text-error text-xs sm:text-sm font-bold hover:bg-error-container/30 active:scale-95 transition-all shadow-xs"
-        >
-          <span className="material-symbols-outlined text-[18px]">logout</span>
-          <span>{t.common.signOut}</span>
-        </button>
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold shadow-xs w-fit">
+          <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
+          JWT Authenticated · {userRole === 'ADMIN' ? t.admin : t.member}
+        </span>
       </div>
 
-      {/* Profile Card */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-surface-container-lowest shadow-sm border border-surface-container-high/40 flex flex-col gap-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-primary text-on-primary flex items-center justify-center font-bold text-2xl shadow-xs shrink-0">
-              {userInitial}
-            </div>
-
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-lg sm:text-xl font-bold text-on-surface truncate">
-                  {currentUser.name}
-                </span>
-                <span
-                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                    isAdmin ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface'
-                  }`}
-                >
-                  {currentUser.role}
-                </span>
+      {/* Side-by-Side Responsive Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Identity, Status & App Controls */}
+        <div className="lg:col-span-5 flex flex-col space-y-5">
+          {/* User Identity Hero Card */}
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004f35] via-[#006948] to-[#004f35] text-white p-5 shadow-lg border border-white/10">
+            <div className="relative z-10 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-white/20 text-white flex items-center justify-center font-extrabold text-xl shadow-md border-2 border-white/30 flex-shrink-0">
+                {currentUser?.name?.slice(0, 2).toUpperCase() || 'HF'}
               </div>
 
-              <span className="text-xs sm:text-sm text-on-surface-variant mt-0.5">
-                @{currentUser.username} • {currentUser.email}
-              </span>
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-lg font-extrabold text-white tracking-tight truncate">
+                    {currentUser?.name || currentUser?.username}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider">
+                    {userRole === 'ADMIN' ? t.admin : t.member}
+                  </span>
+                </div>
+                <span className="text-xs text-[#9ff4ca] font-medium mt-0.5 truncate">
+                  @{currentUser?.username}
+                </span>
+                <div className="flex items-center gap-2 text-[11px] text-[#9ff4ca]/80 mt-1.5 flex-wrap">
+                  <span>ID: #{currentUser?.id}</span>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        diningStatus === 'ACTIVE' ? 'bg-[#9ff4ca]' : 'bg-amber-300'
+                      }`}
+                    ></span>
+                    <span>
+                      {t.status}: {diningStatus === 'ACTIVE' ? t.active : (language === 'km' ? 'នៅក្រៅ' : 'Away')}
+                    </span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Status indicator and toggle */}
-        <div className="p-4 rounded-2xl bg-surface-container-low border border-surface-container-high/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span
-              className={`w-3 h-3 rounded-full shrink-0 ${
-                isActive ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
-              }`}
-            />
-            <div className="flex flex-col">
-              <span className="text-xs sm:text-sm font-bold text-on-surface">
-                {t.profile.status}: {isActive ? t.common.active : t.common.inactive}
-              </span>
-              <span className="text-xs text-on-surface-variant">
-                {isActive ? t.profile.activeHousehold : t.profile.markedInactive}
-              </span>
+          {/* Resident Dining Status Card */}
+          <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-bold text-[var(--on-surface)]">
+                  {t.residentDiningStatus}
+                </h3>
+                <p className="text-xs text-[var(--on-surface-variant)]">
+                  {t.diningStatusDesc}
+                </p>
+              </div>
+
+              {/* 1. CURRENT status prominently as a non-tappable state chip/pill */}
+              <div
+                role="status"
+                aria-label={`Current status: ${diningStatus}`}
+                className={`px-3.5 py-1.5 rounded-full border text-xs font-extrabold flex items-center gap-1.5 cursor-default select-none pointer-events-none transition-colors duration-300 flex-shrink-0 shadow-none ${
+                  diningStatus === 'ACTIVE'
+                    ? 'bg-emerald-500/15 border-emerald-600/30 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-amber-500/15 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={diningStatus}
+                    initial={{ scale: 0.6, opacity: 0, rotate: -25 }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                    exit={{ scale: 0.6, opacity: 0, rotate: 25 }}
+                    transition={{ duration: 0.25 }}
+                    className="material-symbols-outlined text-[18px] flex-shrink-0"
+                  >
+                    {diningStatus === 'ACTIVE' ? 'check_circle' : 'pause_circle'}
+                  </motion.span>
+                </AnimatePresence>
+                <span>
+                  {diningStatus === 'ACTIVE' ? t.active : (language === 'km' ? 'នៅក្រៅ / អសកម្ម' : 'Away / Inactive')}
+                </span>
+              </div>
             </div>
+
+            {/* Inline confirmation alert on status change */}
+            <AnimatePresence>
+              {inlineConfirmation && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -6, height: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 rounded-2xl bg-emerald-600/10 border border-emerald-600/20 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                        check_circle
+                      </span>
+                      <span className="truncate">{inlineConfirmation}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInlineConfirmation(null)}
+                      className="text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 text-xs p-1 rounded-lg hover:bg-emerald-600/10 transition-colors"
+                      aria-label={t.close}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 2 & 5: Single Action Button or Admin-Controlled Read-Only Notice */}
+            {userRole === 'ADMIN' ? (
+              <div className="pt-1">
+                {diningStatus === 'ACTIVE' ? (
+                  /* If currently Active -> show single outlined/secondary button: icon = pause-circle, label = Mark as Away / Pause Dining */
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStatus(currentUser?.id || 14, 'INACTIVE')}
+                    disabled={updatingMemberId !== null}
+                    className="w-full min-h-[48px] px-4 rounded-2xl border-2 border-amber-600/40 text-amber-800 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 active:scale-[0.98] text-xs font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-xs disabled:opacity-60"
+                  >
+                    {isUpdatingSelf ? (
+                      <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px]">pause_circle</span>
+                    )}
+                    <span>{t.markAsAway} ({t.pauseDining})</span>
+                  </button>
+                ) : (
+                  /* If currently Away/Inactive -> show single filled/primary button: icon = check-circle, label = Mark as Active / Resume Dining */
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStatus(currentUser?.id || 14, 'ACTIVE')}
+                    disabled={updatingMemberId !== null}
+                    className="w-full min-h-[48px] px-4 rounded-2xl bg-[#006948] hover:bg-[#005a3e] active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-md disabled:opacity-60"
+                  >
+                    {isUpdatingSelf ? (
+                      <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    )}
+                    <span>{t.markAsActive} ({t.resumeDining})</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* 5: Member view: Status is admin-controlled only -> read-only pill with info callout */
+              <div className="p-3.5 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 flex items-start gap-3 text-xs text-[var(--on-surface-variant)]">
+                <span className="material-symbols-outlined text-[20px] text-[var(--primary)] flex-shrink-0 mt-0.5">
+                  lock_person
+                </span>
+                <div className="space-y-1 min-w-0">
+                  <span className="font-bold text-[var(--on-surface)] block">
+                    {t.statusManagedByAdmin}
+                  </span>
+                  <p className="text-[11px] leading-relaxed">
+                    {t.statusManagedByAdminDesc}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {isAdmin ? (
+          {/* Preferences & Actions */}
+          <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-3">
+            <h3 className="text-base font-bold text-[var(--on-surface)]">
+              {t.appPreferences}
+            </h3>
+
+            {/* Language Switch */}
+            <div className="flex items-center justify-between py-2 border-b border-[var(--outline)]/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[var(--surface-container)] flex items-center justify-center text-[var(--on-surface-variant)]">
+                  <span className="material-symbols-outlined text-[20px]">translate</span>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-[var(--on-surface)] block">
+                    {t.languageSetting}
+                  </span>
+                  <span className="text-[11px] text-[var(--on-surface-variant)]">
+                    {language === 'en' ? 'English (US)' : 'ភាសាខ្មែរ (Khmer)'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setLanguage(language === 'en' ? 'km' : 'en')}
+                className="min-h-[48px] min-w-[48px] px-4 rounded-xl bg-[var(--surface-container)] text-xs font-bold text-[var(--primary)] hover:bg-[var(--surface-container-high)] transition-all flex items-center justify-center"
+              >
+                {language === 'en' ? t.switchToKhmer : t.switchToEnglish}
+              </button>
+            </div>
+
+            {/* Theme Toggle */}
+            <div className="flex items-center justify-between py-2 border-b border-[var(--outline)]/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[var(--surface-container)] flex items-center justify-center text-[var(--on-surface-variant)]">
+                  <span className="material-symbols-outlined text-[20px]">
+                    {theme === 'light' ? 'light_mode' : 'dark_mode'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-[var(--on-surface)] block">
+                    {t.appearance}
+                  </span>
+                  <span className="text-[11px] text-[var(--on-surface-variant)]">
+                    {theme === 'light' ? t.lightMode : t.darkMode}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="min-h-[48px] min-w-[48px] px-4 rounded-xl bg-[var(--surface-container)] text-xs font-bold text-[var(--on-surface)] hover:bg-[var(--surface-container-high)] transition-all flex items-center justify-center"
+              >
+                {theme === 'light' ? t.darkMode : t.lightMode}
+              </button>
+            </div>
+
+            {/* Sign Out */}
             <button
               type="button"
-              onClick={handleToggleMyStatus}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs ${
-                isActive
-                  ? 'bg-surface-container text-on-surface hover:bg-surface-container-high'
-                  : 'bg-primary text-on-primary hover:opacity-90'
-              }`}
+              onClick={logout}
+              className="w-full min-h-[48px] rounded-2xl bg-[var(--error)]/10 text-[var(--error)] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[var(--error)]/20 active:scale-95 transition-all mt-2"
             >
-              {isActive ? t.profile.markInactive : t.profile.markActive}
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              <span>{t.logout}</span>
             </button>
-          ) : (
-            <span className="text-xs text-on-surface-variant italic">
-              {t.profile.statusManagedByAdmin}
-            </span>
-          )}
-        </div>
-
-        {/* Detailed Account Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs sm:text-sm">
-          <div className="p-3.5 rounded-xl bg-surface-container-low">
-            <span className="text-on-surface-variant block mb-1 text-xs">{t.profile.userId}</span>
-            <span className="font-mono font-semibold text-on-surface text-sm sm:text-base">{currentUser.id}</span>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-surface-container-low">
-            <span className="text-on-surface-variant block mb-1 text-xs">{t.profile.joinedDate}</span>
-            <span className="font-semibold text-on-surface text-sm sm:text-base">
-              {fmtDate(currentUser.joined_at || currentUser.created_at)}
-            </span>
           </div>
         </div>
-      </div>
 
-      {/* Preferences: Language & Theme Quick Setting */}
-      <div className="p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/40 flex flex-col gap-3">
-        <h3 className="text-sm sm:text-base font-bold text-on-surface">
-          {t.common.language} & {t.common.theme}
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Language Selection */}
-          <div className="p-3.5 rounded-xl bg-surface-container-low flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px] text-primary">translate</span>
-              <span className="text-xs sm:text-sm font-semibold text-on-surface">{t.common.language}</span>
-            </div>
-            <div className="flex rounded-lg bg-surface-container p-0.5 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setLanguage('en')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  language === 'en' ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguage('km')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  language === 'km' ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                ខ្មែរ
-              </button>
-            </div>
-          </div>
-
-          {/* Theme Selection */}
-          <div className="p-3.5 rounded-xl bg-surface-container-low flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px] text-amber-500">
-                {isDark ? 'dark_mode' : 'light_mode'}
+        {/* Right Column: Household Members Management (PATCH /users/:id/status) */}
+        <div className="lg:col-span-7 flex flex-col space-y-4">
+          <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <h3 className="text-base font-bold text-[var(--on-surface)]">
+                  {t.householdRosterManagement}
+                </h3>
+                <p className="text-xs text-[var(--on-surface-variant)]">
+                  {members.length} {t.registered}
+                </p>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold">
+                {userRole === 'ADMIN' ? t.adminControls : t.readOnlyRoster}
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-on-surface">{t.common.theme}</span>
             </div>
-            <div className="flex rounded-lg bg-surface-container p-0.5 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setTheme('light')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  !isDark ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Light
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme('dark')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  isDark ? 'bg-primary text-on-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Dark
-              </button>
+
+            <div className="space-y-2.5">
+              {members.map((m) => {
+                const isCurrent = String(m.id) === String(currentUser?.id);
+                const isRowUpdating = updatingMemberId === String(m.id);
+
+                return (
+                  <div
+                    key={m.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 min-w-[40px] rounded-full bg-[var(--surface-container-highest)] flex items-center justify-center font-bold text-xs text-[var(--on-surface)] flex-shrink-0">
+                        {m.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-sm text-[var(--on-surface)] truncate">
+                            {m.name} {isCurrent && ` ${t.you}`}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full bg-[var(--surface-container)] text-[var(--on-surface-variant)] text-[10px] font-bold">
+                            {m.role === 'ADMIN' ? t.admin : t.member}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[var(--on-surface-variant)] truncate">
+                          @{m.username} · ID #{m.id}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 self-end sm:self-auto flex-shrink-0">
+                      {/* 6: Current status as colored pill */}
+                      <div
+                        role="status"
+                        aria-label={`Member status: ${m.status}`}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold inline-flex items-center gap-1 border cursor-default select-none pointer-events-none transition-colors duration-300 ${
+                          m.status === 'ACTIVE'
+                            ? 'bg-emerald-500/15 border-emerald-600/30 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-amber-500/15 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                        }`}
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.span
+                            key={m.status}
+                            initial={{ scale: 0.7, opacity: 0, rotate: -20 }}
+                            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                            exit={{ scale: 0.7, opacity: 0, rotate: 20 }}
+                            transition={{ duration: 0.2 }}
+                            className="material-symbols-outlined text-[13px] flex-shrink-0"
+                          >
+                            {m.status === 'ACTIVE' ? 'check_circle' : 'pause_circle'}
+                          </motion.span>
+                        </AnimatePresence>
+                        <span>
+                          {m.status === 'ACTIVE' ? t.active : (language === 'km' ? 'នៅក្រៅ' : 'Away')}
+                        </span>
+                      </div>
+
+                      {/* 6: Admin single next-action button per row */}
+                      {userRole === 'ADMIN' && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(m.id, m.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}
+                          disabled={updatingMemberId !== null}
+                          title={
+                            m.status === 'ACTIVE'
+                              ? `${t.markAsAway} (${m.name})`
+                              : `${t.markAsActive} (${m.name})`
+                          }
+                          aria-label={
+                            m.status === 'ACTIVE'
+                              ? `${t.markAsAway} for ${m.name}`
+                              : `${t.markAsActive} for ${m.name}`
+                          }
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-95 disabled:opacity-50 ${
+                            m.status === 'ACTIVE'
+                              ? 'border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15 bg-amber-500/5'
+                              : 'border border-emerald-600/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600/15 bg-emerald-600/5'
+                          }`}
+                        >
+                          {isRowUpdating ? (
+                            <span className="material-symbols-outlined text-[17px] animate-spin text-[var(--primary)]">
+                              sync
+                            </span>
+                          ) : (
+                            <span className="material-symbols-outlined text-[18px]">
+                              {m.status === 'ACTIVE' ? 'pause_circle' : 'check_circle'}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Switch Account Quick Actions */}
-      <div className="p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container-high/40 flex flex-col gap-3">
-        <h3 className="text-sm sm:text-base font-bold text-on-surface">
-          {t.profile.accountSwitcher}
-        </h3>
-        <p className="text-xs sm:text-sm text-on-surface-variant">
-          {t.profile.switchAccountDesc}
-        </p>
-
-        <button
-          type="button"
-          onClick={onOpenAuth}
-          className="w-full h-12 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors"
-        >
-          <span className="material-symbols-outlined text-[18px]">switch_account</span>
-          <span>{t.profile.switchAccountBtn}</span>
-        </button>
       </div>
     </div>
   );

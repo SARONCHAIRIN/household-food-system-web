@@ -1,6 +1,6 @@
 {
   "name": "Household Food",
-  "description": "Apartment 4B shared food budgeting, meal attendance, kitchen rotation, and pro-rata expense splitting.",
+  "description": "Household shared-meal and cost-splitting system with pantry ledger, daily meal attendance, prepaid deposits, and billing settlement.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

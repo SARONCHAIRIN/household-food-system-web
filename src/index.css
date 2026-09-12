@@ -1,274 +1,102 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@layer base {
+  :root {
+    --primary: #004f35;
+    --primary-container: #006948;
+    --primary-fixed: #9ff4ca;
+    --primary-fixed-dim: #83d7ae;
+    --on-primary: #ffffff;
+    --on-primary-container: #91e5bc;
+    --on-primary-fixed: #002114;
 
-:root {
-  --color-surface: #f9f9ff;
-  --color-surface-dim: #cfdaf2;
-  --color-surface-bright: #f9f9ff;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f0f3ff;
-  --color-surface-container: #e7eeff;
-  --color-surface-container-high: #dee8ff;
-  --color-surface-container-highest: #d8e3fb;
-  --color-on-surface: #111c2d;
-  --color-on-surface-variant: #3d4a42;
-  --color-inverse-surface: #263143;
-  --color-inverse-on-surface: #ecf1ff;
-  --color-outline: #6d7a72;
-  --color-outline-variant: #bccac0;
-  --color-surface-tint: #006c4a;
-  
-  --color-primary: #006948;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #00855d;
-  --color-on-primary-container: #f5fff7;
-  --color-inverse-primary: #68dba9;
-  --color-primary-fixed: #85f8c4;
-  --color-primary-fixed-dim: #68dba9;
-  --color-on-primary-fixed: #002114;
-  --color-on-primary-fixed-variant: #005137;
+    --secondary: #9d4300;
+    --secondary-container: #ff8d4b;
+    --secondary-fixed: #ffdbca;
+    --secondary-fixed-dim: #ffb690;
+    --on-secondary: #ffffff;
+    --on-secondary-container: #6c2c00;
 
-  --color-secondary: #9d4300;
-  --color-on-secondary: #ffffff;
-  --color-secondary-container: #fd761a;
-  --color-on-secondary-container: #5c2400;
-  --color-secondary-fixed: #ffdbca;
-  --color-secondary-fixed-dim: #ffb690;
-  --color-on-secondary-fixed: #341100;
-  --color-on-secondary-fixed-variant: #783200;
+    --tertiary: #00486f;
+    --tertiary-container: #006093;
+    --tertiary-fixed: #cce5ff;
+    --tertiary-fixed-dim: #93ccff;
+    --on-tertiary: #ffffff;
+    --on-tertiary-container: #afd8ff;
 
-  --color-tertiary: #006194;
-  --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #007bb9;
-  --color-on-tertiary-container: #fdfcff;
-  --color-tertiary-fixed: #cce5ff;
-  --color-tertiary-fixed-dim: #93ccff;
-  --color-on-tertiary-fixed: #001d31;
-  --color-on-tertiary-fixed-variant: #004b73;
+    --surface: #f9f9ff;
+    --surface-dim: #cfdaf2;
+    --surface-bright: #f9f9ff;
+    --surface-container-lowest: #ffffff;
+    --surface-container-low: #f0f3ff;
+    --surface-container: #e7eeff;
+    --surface-container-high: #dee8ff;
+    --surface-container-highest: #d8e3fb;
+    --on-surface: #111c2d;
+    --on-surface-variant: #3f4943;
+    --outline: #6f7a72;
+    --outline-variant: #bec9c1;
 
-  --color-error: #ba1a1a;
-  --color-on-error: #ffffff;
-  --color-error-container: #ffdad6;
-  --color-on-error-container: #93000a;
+    --error: #ba1a1a;
+    --error-container: #ffdad6;
+    --on-error: #ffffff;
+    --on-error-container: #93000a;
+  }
 
-  --color-background: #f9f9ff;
-  --color-on-background: #111c2d;
-  --color-surface-variant: #d8e3fb;
+  .dark {
+    --primary: #10b981;
+    --primary-container: #006948;
+    --primary-fixed: #83d7ae;
+    --primary-fixed-dim: #50b889;
+    --on-primary: #022c1b;
+    --on-primary-container: #91e5bc;
+    --on-primary-fixed: #002114;
+
+    --secondary: #f97316;
+    --secondary-container: #783200;
+    --secondary-fixed: #ffb690;
+    --secondary-fixed-dim: #ea580c;
+    --on-secondary: #ffffff;
+    --on-secondary-container: #ffdbca;
+
+    --tertiary: #38bdf8;
+    --tertiary-container: #00486f;
+    --tertiary-fixed: #93ccff;
+    --tertiary-fixed-dim: #0284c7;
+    --on-tertiary: #001d31;
+    --on-tertiary-container: #cce5ff;
+
+    --surface: #0e131b;
+    --surface-dim: #0b0f16;
+    --surface-bright: #1c2432;
+    --surface-container-lowest: #111620;
+    --surface-container-low: #141a24;
+    --surface-container: #19202d;
+    --surface-container-high: #212a3a;
+    --surface-container-highest: #2b3648;
+    --on-surface: #e4e7f2;
+    --on-surface-variant: #9ba6a0;
+    --outline: #6f7a72;
+    --outline-variant: #3a453f;
+
+    --error: #ffb4ab;
+    --error-container: #93000a;
+    --on-error: #690005;
+    --on-error-container: #ffdad6;
+  }
+
+  body {
+    font-family: 'Inter', 'Kantumruy Pro', sans-serif;
+    background-color: var(--surface);
+    color: var(--on-surface);
+  }
+
+  h1, h2, h3, h4, .font-heading, .font-display {
+    font-family: 'Plus Jakarta Sans', 'Kantumruy Pro', sans-serif;
+  }
 }
 
-.dark {
-  --color-surface: #0e131b;
-  --color-surface-dim: #0e131b;
-  --color-surface-bright: #2f3542;
-  --color-surface-container-lowest: #080c14;
-  --color-surface-container-low: #131823;
-  --color-surface-container: #19202d;
-  --color-surface-container-high: #222a3a;
-  --color-surface-container-highest: #2d3648;
-  --color-on-surface: #e4e7f2;
-  --color-on-surface-variant: #9aa5b6;
-  --color-inverse-surface: #e4e7f2;
-  --color-inverse-on-surface: #131823;
-  --color-outline: #6f7b8d;
-  --color-outline-variant: #283244;
-  --color-surface-tint: #4ade80;
-
-  --color-primary: #10b981;
-  --color-on-primary: #022c1b;
-  --color-primary-container: #065f46;
-  --color-on-primary-container: #a7f3d0;
-  --color-inverse-primary: #006948;
-
-  --color-secondary: #f97316;
-  --color-on-secondary: #431407;
-  --color-secondary-container: #7c2d12;
-  --color-on-secondary-container: #ffedd5;
-
-  --color-tertiary: #38bdf8;
-  --color-on-tertiary: #082f49;
-  --color-tertiary-container: #0369a1;
-  --color-on-tertiary-container: #e0f2fe;
-
-  --color-error: #f87171;
-  --color-on-error: #450a0a;
-  --color-error-container: #7f1d1d;
-  --color-on-error-container: #fee2e2;
-
-  --color-background: #0e131b;
-  --color-on-background: #e4e7f2;
-  --color-surface-variant: #222a3a;
-}
-
-@theme {
-  --color-surface: var(--color-surface);
-  --color-surface-dim: var(--color-surface-dim);
-  --color-surface-bright: var(--color-surface-bright);
-  --color-surface-container-lowest: var(--color-surface-container-lowest);
-  --color-surface-container-low: var(--color-surface-container-low);
-  --color-surface-container: var(--color-surface-container);
-  --color-surface-container-high: var(--color-surface-container-high);
-  --color-surface-container-highest: var(--color-surface-container-highest);
-  --color-on-surface: var(--color-on-surface);
-  --color-on-surface-variant: var(--color-on-surface-variant);
-  --color-inverse-surface: var(--color-inverse-surface);
-  --color-inverse-on-surface: var(--color-inverse-on-surface);
-  --color-outline: var(--color-outline);
-  --color-outline-variant: var(--color-outline-variant);
-  --color-surface-tint: var(--color-surface-tint);
-  
-  --color-primary: var(--color-primary);
-  --color-on-primary: var(--color-on-primary);
-  --color-primary-container: var(--color-primary-container);
-  --color-on-primary-container: var(--color-on-primary-container);
-  --color-inverse-primary: var(--color-inverse-primary);
-  --color-primary-fixed: var(--color-primary-fixed);
-  --color-primary-fixed-dim: var(--color-primary-fixed-dim);
-  --color-on-primary-fixed: var(--color-on-primary-fixed);
-  --color-on-primary-fixed-variant: var(--color-on-primary-fixed-variant);
-
-  --color-secondary: var(--color-secondary);
-  --color-on-secondary: var(--color-on-secondary);
-  --color-secondary-container: var(--color-secondary-container);
-  --color-on-secondary-container: var(--color-on-secondary-container);
-  --color-secondary-fixed: var(--color-secondary-fixed);
-  --color-secondary-fixed-dim: var(--color-secondary-fixed-dim);
-  --color-on-secondary-fixed: var(--color-on-secondary-fixed);
-  --color-on-secondary-fixed-variant: var(--color-on-secondary-fixed-variant);
-
-  --color-tertiary: var(--color-tertiary);
-  --color-on-tertiary: var(--color-on-tertiary);
-  --color-tertiary-container: var(--color-tertiary-container);
-  --color-on-tertiary-container: var(--color-on-tertiary-container);
-  --color-tertiary-fixed: var(--color-tertiary-fixed);
-  --color-tertiary-fixed-dim: var(--color-tertiary-fixed-dim);
-  --color-on-tertiary-fixed: var(--color-on-tertiary-fixed);
-  --color-on-tertiary-fixed-variant: var(--color-on-tertiary-fixed-variant);
-
-  --color-error: var(--color-error);
-  --color-on-error: var(--color-on-error);
-  --color-error-container: var(--color-error-container);
-  --color-on-error-container: var(--color-on-error-container);
-
-  --color-background: var(--color-background);
-  --color-on-background: var(--color-on-background);
-  --color-surface-variant: var(--color-surface-variant);
-
-  --font-display: 'Plus Jakarta Sans', 'Kantumruy Pro', system-ui, -apple-system, sans-serif;
-  --font-body: 'Inter', 'Kantumruy Pro', system-ui, -apple-system, sans-serif;
-}
-
-body {
-  font-family: 'Inter', 'Kantumruy Pro', sans-serif;
-  background-color: var(--color-surface);
-  color: var(--color-on-surface);
-  overscroll-behavior: none;
-  min-height: 100vh;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-/* Custom typographic helper classes matching the design specifications */
-.font-display-lg {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 36px;
-  line-height: 44px;
-  letter-spacing: -0.02em;
-  font-weight: 700;
-}
-.font-display-sm {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 28px;
-  line-height: 36px;
-  letter-spacing: -0.01em;
-  font-weight: 700;
-}
-.font-headline-lg {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 24px;
-  line-height: 32px;
-  letter-spacing: -0.01em;
-  font-weight: 600;
-}
-.font-headline-md {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 600;
-}
-.font-headline-sm {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 18px;
-  line-height: 24px;
-  font-weight: 600;
-}
-.font-title-md {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 600;
-}
-.font-currency-display {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 32px;
-  line-height: 38px;
-  letter-spacing: -0.03em;
-  font-weight: 800;
-}
-.font-label-lg {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 14px;
-  line-height: 20px;
-  letter-spacing: 0.01em;
-  font-weight: 600;
-}
-.font-label-md {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
-  line-height: 16px;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-}
-.font-label-sm {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 10px;
-  line-height: 14px;
-  letter-spacing: 0.04em;
-  font-weight: 700;
-}
-.font-body-lg {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-}
-.font-body-md {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 400;
-}
-.font-body-sm {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 400;
-}
-
-.px-screen-gutter {
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-.-mx-screen-gutter {
-  margin-left: -1rem;
-  margin-right: -1rem;
-}
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
-}
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
+/* Material Symbols icon styling */
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
@@ -281,19 +109,20 @@ body {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
+  -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-/* Hide scrollbars while preserving scroll functionality */
-.no-scrollbar::-webkit-scrollbar,
-.scrollbar-none::-webkit-scrollbar {
+.material-symbols-outlined.fill {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Hide scrollbars for smooth date strips and tabs */
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-.no-scrollbar,
-.scrollbar-none {
+.no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
