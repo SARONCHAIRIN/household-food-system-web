@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, parseCurrency } from '../services/apiClient';
 import { getLocalDateString } from '../services/billingDateUtils';
+import { getMealConfirmationType } from '../types/api';
 
 export const DashboardScreen: React.FC = () => {
   const {
@@ -31,6 +32,7 @@ export const DashboardScreen: React.FC = () => {
   );
 
   const isEating = myTodayRecord ? myTodayRecord.status === 'EAT' : null;
+  const myTodayConfirmationType = getMealConfirmationType(myTodayRecord);
 
   // Meal attendance count for today
   const todayEaters = mealStatuses.filter(
@@ -68,12 +70,44 @@ export const DashboardScreen: React.FC = () => {
   const existingCostForDate = dailyCosts.find(
     (c) => c.date && c.date.split('T')[0] === expenseDate
   );
+  // Meal selection deadline: 12:00 PM local device time
+  const mealDeadline = new Date();
+  mealDeadline.setHours(12, 0, 0, 0);
+
+  const mealLocked = new Date() >= mealDeadline;
+
+  const userStatus = (
+    currentUser?.status ??
+    currentUser?.accountStatus ??
+    currentUser?.account_status ??
+    'INACTIVE'
+  ).toUpperCase();
 
   const handleDinnerSelection = async (status: 'EAT' | 'NOT_EAT') => {
+    if (userStatus !== 'ACTIVE') {
+      showToast(
+        language === 'km'
+          ? 'គណនីរបស់អ្នកមិនអាចជ្រើសរើសអាហារបានទេ'
+          : 'Your account cannot select meals.',
+        'error'
+      );
+      return;
+    }
+
+    if (mealLocked) {
+      showToast(
+        language === 'km'
+          ? 'អស់ពេលកំណត់សម្រាប់ជ្រើសរើសអាហារថ្ងៃនេះហើយ'
+          : 'The meal selection deadline has passed.',
+        'error'
+      );
+      return;
+    }
+
     try {
       await toggleMealStatus(todayStr, status);
     } catch {
-      // handled
+      // handled by AppContext
     }
   };
 
@@ -252,44 +286,200 @@ export const DashboardScreen: React.FC = () => {
               </span>
             </div>
 
-            {/* Attendance Action Buttons (min 48px touch target) */}
-            <div className="grid grid-cols-2 gap-3 pt-4">
-              <button
-                onClick={() => handleDinnerSelection('EAT')}
-                className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                  isEating === true
-                    ? 'bg-[var(--primary)] text-white shadow-md ring-2 ring-[var(--primary)]'
-                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                <div className="flex flex-col items-start text-left leading-tight">
-                  <span>{t.eatTonight}</span>
-                  <span className="text-[10px] opacity-80">{t.eatTonightKh}</span>
+            {/* Attendance Confirmation Badge & Status Indicator */}
+            <div className="pt-3 pb-1">
+              {myTodayConfirmationType === 'AUTO' && (
+                <div className="flex flex-col space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs ring-1 ring-amber-500/20">
+                      <span className="material-symbols-outlined text-[16px] text-amber-600 dark:text-amber-400 animate-pulse">
+                        bolt
+                      </span>
+                      <span>{t.autoConfirmedBadge}</span>
+                    </span>
+                    <span className="text-[11px] font-bold text-[var(--on-surface-variant)] px-2 py-0.5 rounded-lg bg-[var(--surface-container)]">
+                      {isEating ? `🍽️ ${t.eating}` : `🚫 ${t.skipping}`}
+                    </span>
+                  </div>
+
+                  {/* Context Banner / Explanatory Tooltip */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5 shadow-xs">
+                    <span className="material-symbols-outlined text-[18px] text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5">
+                      info
+                    </span>
+                    <div className="flex flex-col space-y-0.5">
+                      <p className="font-bold leading-relaxed">
+                        {t.autoConfirmedTooltip}
+                      </p>
+                      <p className="text-[11px] text-[var(--on-surface-variant)]">
+                        {t.overrideStatusHint}
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {myTodayConfirmationType === 'MANUAL' && (
+                <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                      <span className="material-symbols-outlined text-[15px]">check_circle</span>
+                      <span>{t.manualConfirmedBadge}</span>
+                    </span>
+                    <span className="text-xs font-bold text-[var(--on-surface)]">
+                      {isEating ? t.eating : t.skipping}
+                    </span>
+                  </div>
+                  {myTodayRecord?.confirmed_at && (
+                    <span className="text-[10px] text-[var(--on-surface-variant)] font-mono">
+                      {new Date(myTodayRecord.confirmed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {myTodayRecord === undefined && (
+                <div className="flex items-center gap-2 p-2 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 text-xs text-[var(--on-surface-variant)]">
+                  <span className="material-symbols-outlined text-[18px] text-[var(--on-surface-variant)]">
+                    schedule
+                  </span>
+                  <span>{t.noResponseBadge} · {language === 'km' ? 'សូមជ្រើសរើសវត្តមានខាងក្រោម' : 'Please select your dinner preference below'}</span>
+                </div>
+              )}
+            </div>
+            {mealLocked && (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl bg-gray-100 border border-gray-200 px-3 py-2.5 text-xs text-gray-500">
+                <span className="material-symbols-outlined text-[18px]">
+                  lock
+                </span>
+
+                <div className="flex flex-col">
+                  <span className="font-bold">
+                    {language === 'km'
+                      ? 'ការជ្រើសរើសអាហារបានបិទហើយ'
+                      : 'Meal selection is closed'}
+                  </span>
+
+                  <span className="text-[10px]">
+                    {language === 'km'
+                      ? 'មិនអាចកែប្រែវត្តមានបន្ទាប់ពីម៉ោង 12:00 PM'
+                      : 'You cannot change your meal after 12:00 PM.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Attendance Action Buttons (min 48px touch target) */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+
+                type="button"
+
+                disabled={mealLocked || userStatus !== 'ACTIVE'}
+                onClick={() => handleDinnerSelection('EAT')}
+
+                className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
+
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+
+                  : isEating === true
+
+                    ? 'bg-[var(--primary)] text-white shadow-md ring-2 ring-[var(--primary)] active:scale-95 cursor-pointer'
+
+                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
+
+                  }`}
+
+              >
+
+                <span className="material-symbols-outlined text-[20px]">
+
+                  {mealLocked ? 'lock' : 'check_circle'}
+
+                </span>
+
+                <div className="flex flex-col items-start text-left leading-tight">
+
+                  <span>{t.eatTonight}</span>
+
+                  <span className="text-[10px] opacity-80">
+
+                    {t.eatTonightKh}
+
+                  </span>
+
+                </div>
+
               </button>
 
+              {/* SKIP MEAL */}
+
               <button
+
+                type="button"
+
+                disabled={mealLocked}
+
                 onClick={() => handleDinnerSelection('NOT_EAT')}
-                className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                  isEating === false
-                    ? 'bg-[var(--secondary)] text-white shadow-md ring-2 ring-[var(--secondary)]'
-                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-                }`}
+
+                className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
+
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+
+                  : isEating === false
+
+                    ? 'bg-[var(--secondary)] text-white shadow-md ring-2 ring-[var(--secondary)] active:scale-95 cursor-pointer'
+
+                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
+
+                  }`}
+
               >
-                <span className="material-symbols-outlined text-[20px]">cancel</span>
+
+                <span className="material-symbols-outlined text-[20px]">
+
+                  {mealLocked ? 'lock' : 'cancel'}
+
+                </span>
+
                 <div className="flex flex-col items-start text-left leading-tight">
+
                   <span>{t.skipMeal}</span>
-                  <span className="text-[10px] opacity-80">{t.skipMealKh}</span>
+
+                  <span className="text-[10px] opacity-80">
+
+                    {t.skipMealKh}
+
+                  </span>
+
                 </div>
+
               </button>
             </div>
           </div>
 
-          <div className="text-xs text-[var(--on-surface-variant)] text-center py-1 bg-[var(--surface-container-low)] rounded-xl">
-            {isEating === true && (language === 'km' ? '✅ វត្តមានរបស់អ្នកត្រូវបានកត់ត្រា៖ ញ៉ាំ' : '✅ Your attendance is recorded: EAT')}
-            {isEating === false && (language === 'km' ? '❌ វត្តមានរបស់អ្នកត្រូវបានកត់ត្រា៖ មិនញ៉ាំ' : '❌ Your attendance is recorded: NOT_EAT')}
-            {isEating === null && (language === 'km' ? '⏳ មិនទាន់មានការឆ្លើយតបសម្រាប់ថ្ងៃនេះនៅឡើយទេ' : '⏳ No response submitted for today yet.')}
+          <div className="text-xs text-[var(--on-surface-variant)] text-center py-1.5 px-3 bg-[var(--surface-container-low)] rounded-xl flex items-center justify-center gap-1.5">
+            {isEating === true && (
+              <span>
+                {language === 'km' ? '✅ វត្តមានរបស់អ្នកត្រូវបានកត់ត្រា៖ ញ៉ាំ' : '✅ Your attendance is recorded: EAT'}{' '}
+                <span className="font-semibold opacity-85">
+                  ({myTodayConfirmationType === 'AUTO' ? t.autoConfirmedBadgeShort : t.manualConfirmedBadgeShort})
+                </span>
+              </span>
+            )}
+            {isEating === false && (
+              <span>
+                {language === 'km' ? '❌ វត្តមានរបស់អ្នកត្រូវបានកត់ត្រា៖ មិនញ៉ាំ' : '❌ Your attendance is recorded: NOT_EAT'}{' '}
+                <span className="font-semibold opacity-85">
+                  ({myTodayConfirmationType === 'AUTO' ? t.autoConfirmedBadgeShort : t.manualConfirmedBadgeShort})
+                </span>
+              </span>
+            )}
+            {isEating === null && (
+              <span>
+                {language === 'km' ? '⏳ មិនទាន់មានការឆ្លើយតបសម្រាប់ថ្ងៃនេះនៅឡើយទេ' : '⏳ No response submitted for today yet.'}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -360,13 +550,37 @@ export const DashboardScreen: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                    {(() => {
+                      const memberToday = mealStatuses.find(
+                        (s) =>
+                          s.date.startsWith(todayStr) &&
+                          (String(s.memberId) === String(m.id) || String(s.member_id) === String(m.id))
+                      );
+                      if (!memberToday) return null;
+                      const memberConf = getMealConfirmationType(memberToday);
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${memberConf === 'AUTO'
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                            }`}
+                          title={memberConf === 'AUTO' ? t.autoConfirmedTooltip : t.manualConfirmedTooltip}
+                        >
+                          <span className="material-symbols-outlined text-[11px]">
+                            {memberConf === 'AUTO' ? 'bolt' : 'check'}
+                          </span>
+                          <span>
+                            {memberToday.status === 'EAT' ? t.eating : t.skipping} · {memberConf === 'AUTO' ? t.autoConfirmedTag : t.userChoiceTag}
+                          </span>
+                        </span>
+                      );
+                    })()}
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        m.status === 'ACTIVE'
-                          ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
-                          : 'bg-[var(--surface-container-highest)] text-[var(--on-surface-variant)]'
-                      }`}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.status === 'ACTIVE'
+                        ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
+                        : 'bg-[var(--surface-container-highest)] text-[var(--on-surface-variant)]'
+                        }`}
                     >
                       {m.status === 'ACTIVE' ? t.active : t.inactive}
                     </span>
@@ -552,11 +766,10 @@ export const DashboardScreen: React.FC = () => {
           <button
             onClick={handleSaveExpense}
             disabled={savingExpense || !expenseDate}
-            className={`w-full min-h-[48px] rounded-full text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 ${
-              existingCostForDate
-                ? 'bg-amber-600 hover:bg-amber-700'
-                : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
-            }`}
+            className={`w-full min-h-[48px] rounded-full text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 ${existingCostForDate
+              ? 'bg-amber-600 hover:bg-amber-700'
+              : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
+              }`}
           >
             {savingExpense ? (
               <span className="material-symbols-outlined text-[20px] animate-spin">sync</span>
@@ -569,8 +782,8 @@ export const DashboardScreen: React.FC = () => {
               {savingExpense
                 ? t.loading
                 : existingCostForDate
-                ? (language === 'km' ? `ពិនិត្យទិន្នន័យត្រួតគ្នា (${expenseDate})` : `Review Duplicate for ${expenseDate}`)
-                : (language === 'km' ? `រក្សាទុកចំណាយសម្រាប់ ${expenseDate}` : `Save Cost for ${expenseDate}`)}
+                  ? (language === 'km' ? `ពិនិត្យទិន្នន័យត្រួតគ្នា (${expenseDate})` : `Review Duplicate for ${expenseDate}`)
+                  : (language === 'km' ? `រក្សាទុកចំណាយសម្រាប់ ${expenseDate}` : `Save Cost for ${expenseDate}`)}
             </span>
           </button>
         </div>

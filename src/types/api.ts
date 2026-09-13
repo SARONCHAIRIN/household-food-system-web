@@ -58,17 +58,30 @@ export interface DailyCost {
   menu_title_kh?: string;
 }
 
+export type ConfirmationType = 'AUTO' | 'MANUAL';
+
 export interface MealStatusRecord {
   id: string | number;
   memberId?: string | number;
   member_id?: string | number;
   date: string;
   status: MealConfirmationStatus;
-  confirmation_type?: string;
+  confirmation_type?: ConfirmationType | string;
+  confirmationType?: ConfirmationType | string;
+  confirmed_at?: string;
   cost_food?: string | number | null;
   cost_ingredient?: string | number | null;
   cost_total?: string | number | null;
   created_at?: string;
+  updated_at?: string;
+}
+
+export function getMealConfirmationType(record?: MealStatusRecord | null): ConfirmationType | null {
+  if (!record) return null;
+  const raw = String(record.confirmation_type || record.confirmationType || '').toUpperCase().trim();
+  if (raw === 'AUTO') return 'AUTO';
+  if (raw === 'MANUAL') return 'MANUAL';
+  return null;
 }
 
 export interface TransactionRecord {

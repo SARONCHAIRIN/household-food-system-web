@@ -1,6 +1,16 @@
 export type Language = 'en' | 'km';
 
 export interface TranslationDictionary {
+  // Backward-compatible nested namespaces
+  common?: any;
+  nav?: any;
+  auth?: any;
+  meals?: any;
+  bills?: any;
+  deposits?: any;
+  profile?: any;
+  settings?: any;
+
   // Flat ARB-style keys
   dashboard_addExpense: string;
   bills_settleDeduct: string;
@@ -128,6 +138,18 @@ export interface TranslationDictionary {
   eaten: string;
   skipped: string;
   daysPoolCost: string;
+
+  // Auto-Confirmation & Meal Badges
+  autoConfirmedBadge: string;
+  autoConfirmedBadgeShort: string;
+  autoConfirmedTooltip: string;
+  manualConfirmedBadge: string;
+  manualConfirmedBadgeShort: string;
+  manualConfirmedTooltip: string;
+  noResponseBadge: string;
+  autoConfirmedTag: string;
+  userChoiceTag: string;
+  overrideStatusHint: string;
 
   // Deposits
   prepaidVault: string;
@@ -292,6 +314,28 @@ export interface TranslationDictionary {
 
 export const translations: Record<Language, TranslationDictionary> = {
   en: {
+    // Backward-compatible namespaces
+    common: {
+      appName: 'Household Food',
+      close: 'Close',
+      cancel: 'Cancel',
+      confirm: 'Confirm',
+      save: 'Save',
+      admin: 'ADMIN',
+      member: 'MEMBER',
+      status: 'Status',
+      loading: 'Loading...',
+      actions: 'Actions',
+      filter: 'Filter',
+    },
+    nav: {
+      dashboard: 'Dashboard',
+      meals: 'Meals',
+      deposits: 'Deposits',
+      bills: 'Bills',
+      profile: 'Profile',
+    },
+
     // Flat ARB keys
     dashboard_addExpense: 'Add Expense',
     bills_settleDeduct: 'Settle & Deduct Deposits',
@@ -419,6 +463,18 @@ export const translations: Record<Language, TranslationDictionary> = {
     eaten: 'Eaten',
     skipped: 'Skipped',
     daysPoolCost: "Day's Pool Cost",
+
+    // Auto-Confirmation & Meal Badges
+    autoConfirmedBadge: '⚡ Auto-confirmed (no response)',
+    autoConfirmedBadgeShort: '⚡ Auto-confirmed',
+    autoConfirmedTooltip: 'Cutoff (11:00 AM) passed — you were automatically marked as EAT because no choice was submitted.',
+    manualConfirmedBadge: '✓ Recorded by you',
+    manualConfirmedBadgeShort: '✓ User choice',
+    manualConfirmedTooltip: 'Attendance manually confirmed by user.',
+    noResponseBadge: '⏳ Pending choice',
+    autoConfirmedTag: 'Auto-confirmed',
+    userChoiceTag: 'User choice',
+    overrideStatusHint: 'You can change your status below to override this default.',
 
     // Deposits
     prepaidVault: 'Prepaid Deposits',
@@ -582,6 +638,28 @@ export const translations: Record<Language, TranslationDictionary> = {
   },
 
   km: {
+    // Backward-compatible namespaces
+    common: {
+      appName: 'ផ្ទះបាយរួម',
+      close: 'បិទ',
+      cancel: 'បោះបង់',
+      confirm: 'បញ្ជាក់',
+      save: 'រក្សាទុក',
+      admin: 'ADMIN',
+      member: 'MEMBER',
+      status: 'ស្ថានភាព',
+      loading: 'កំពុងផ្ទុក...',
+      actions: 'សកម្មភាព',
+      filter: 'ចម្រាញ់',
+    },
+    nav: {
+      dashboard: 'ផ្ទាំងគ្រប់គ្រង',
+      meals: 'វត្តមានអាហារ',
+      deposits: 'ប្រាក់កក់ទុកមុន',
+      bills: 'វិក្កយបត្រ',
+      profile: 'ព័ត៌មានផ្ទាល់ខ្លួន',
+    },
+
     // Flat ARB keys
     dashboard_addExpense: 'បន្ថែមចំណាយ',
     bills_settleDeduct: 'ទូទាត់ និងកាត់ប្រាក់កក់',
@@ -709,6 +787,18 @@ export const translations: Record<Language, TranslationDictionary> = {
     eaten: 'បានញ៉ាំ',
     skipped: 'មិនញ៉ាំ',
     daysPoolCost: 'ចំណាយរួមប្រចាំថ្ងៃ',
+
+    // Auto-Confirmation & Meal Badges
+    autoConfirmedBadge: '⚡ បញ្ជាក់ស្វ័យប្រវត្តិ (គ្មានការឆ្លើយតប)',
+    autoConfirmedBadgeShort: '⚡ បញ្ជាក់ស្វ័យប្រវត្តិ',
+    autoConfirmedTooltip: 'ផុតកំណត់ម៉ោង (១១:០០ ព្រឹក) — អ្នកត្រូវបានកត់ត្រាថា ញ៉ាំ ដោយស្វ័យប្រវត្តិ ពីព្រោះមិនមានការឆ្លើយតប។',
+    manualConfirmedBadge: '✓ កត់ត្រាដោយអ្នកផ្ទាល់',
+    manualConfirmedBadgeShort: '✓ ជម្រើសផ្ទាល់ខ្លួន',
+    manualConfirmedTooltip: 'វត្តមានត្រូវបានកត់ត្រាដោយអ្នកផ្ទាល់។',
+    noResponseBadge: '⏳ រង់ចាំការជ្រើសរើស',
+    autoConfirmedTag: 'បញ្ជាក់ស្វ័យប្រវត្តិ',
+    userChoiceTag: 'ជម្រើសផ្ទាល់ខ្លួន',
+    overrideStatusHint: 'អ្នកអាចជ្រើសរើសជម្រើសខាងក្រោមដើម្បីកែប្រែវត្តមាននេះឡើងវិញ។',
 
     // Deposits
     prepaidVault: 'ប្រាក់កក់ទុកមុន',
@@ -851,8 +941,28 @@ export const translations: Record<Language, TranslationDictionary> = {
     partialBalanceMembers: 'សមតុល្យមិនគ្រប់គ្រាន់ / ទូទាត់ផ្នែកខ្លះ',
     preSettleEstimateUnpaid: 'ការប៉ាន់ប្រមាណមុនទូទាត់ (មិនទាន់បង់)',
     settlementReportPreview: 'មើលរបាយការណ៍ទូទាត់ជាមុន',
+
+    // Registration & Pending Status
+    accountPendingApproval: 'គណនីកំពុងរង់ចាំការអនុម័ត',
+    accountPendingApprovalDesc: 'គណនីរបស់អ្នកត្រូវបានបង្កើតដោយជោគជ័យ ប៉ុន្តែត្រូវការការអនុម័តពីអ្នកគ្រប់គ្រង (Admin) មុនពេលអាចចូលរួមចំណាយ និងកត់ត្រាអាហារ។',
+    pendingApprovalBadge: 'រង់ចាំការអនុម័ត',
+    pendingApprovalNotice: 'គណនីរបស់អ្នកស្ថិតក្នុងស្ថានភាពមិនទាន់សកម្ម។ សូមរង់ចាំ Admin ធ្វើឱ្យសកម្ម។',
+    pendingApprovalMealsBlocked: 'គណនីមិនទាន់ត្រូវបានអនុម័ត មិនអាចកត់ត្រាវត្តមានអាហារបានទេ។',
+    checkApprovalStatus: 'ពិនិត្យស្ថានភាពអនុម័ត',
+    pendingApprovalCheckSuccess: 'គណនីរបស់អ្នកត្រូវបានធ្វើឱ្យសកម្មរួចរាល់ហើយ!',
+    pendingApprovalStillPending: 'គណនីរបស់អ្នកនៅតែកំពុងរង់ចាំការអនុម័តពី Admin នៅឡើយ។',
+    adminPendingBanner: 'មានសមាជិកថ្មីកំពុងរង់ចាំការអនុម័ត',
+    filterAll: 'ទាំងអស់',
+    filterActive: 'សកម្ម',
+    filterPending: 'រង់ចាំការអនុម័ត',
+    filterInactive: 'អសកម្ម',
+    activateResident: 'ធ្វើឱ្យសកម្ម',
+    newResidentPending: 'សមាជិកថ្មីរង់ចាំការអនុម័ត',
+    manuallyDeactivated: 'ត្រូវបានបិទដំណើរការដោយផ្ទាល់',
   },
 };
+
+export type Translations = TranslationDictionary;
 
 /**
  * Common Known Error Translations Map (English -> Khmer)

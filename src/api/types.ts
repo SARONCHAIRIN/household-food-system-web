@@ -77,19 +77,30 @@ export interface CreateDailyCostPayload {
   totalMemberCount?: number;
 }
 
+export type ConfirmationType = 'AUTO' | 'MANUAL';
+
 export interface MealStatusRecord {
   id: string;
   member_id?: string;
   memberId?: string;
   date: string; // ISO string e.g. "2026-09-09T00:00:00.000Z"
   status: 'EAT' | 'NOT_EAT';
-  confirmation_type?: string;
+  confirmation_type?: ConfirmationType | string;
+  confirmationType?: ConfirmationType | string;
   confirmed_at?: string;
   cost_food?: string | null;
   cost_ingredient?: string | null;
   cost_total?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export function getMealConfirmationType(record?: MealStatusRecord | null): ConfirmationType | null {
+  if (!record) return null;
+  const raw = String(record.confirmation_type || record.confirmationType || '').toUpperCase().trim();
+  if (raw === 'AUTO') return 'AUTO';
+  if (raw === 'MANUAL') return 'MANUAL';
+  return null;
 }
 
 export interface SetMealStatusPayload {

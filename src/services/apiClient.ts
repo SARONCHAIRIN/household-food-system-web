@@ -16,8 +16,9 @@ import {
 
 // ជំនួសកូដចាស់ដោយកូដនេះ៖
 
-const DEFAULT_API_BASE = (typeof window !== 'undefined' && import.meta.env.VITE_API_URL) 
-  ? import.meta.env.VITE_API_URL 
+const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+const DEFAULT_API_BASE = (typeof window !== 'undefined' && metaEnv?.VITE_API_URL) 
+  ? metaEnv.VITE_API_URL 
   : 'https://household-food-system.onrender.com/api/v1';
 export class ApiException extends Error {
   status: number;

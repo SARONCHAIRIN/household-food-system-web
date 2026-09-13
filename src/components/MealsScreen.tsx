@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, parseCurrency } from '../services/apiClient';
+import { getLocalDateString } from '../services/billingDateUtils';
 
 export const MealsScreen: React.FC = () => {
   const {
@@ -11,11 +12,40 @@ export const MealsScreen: React.FC = () => {
     toggleMealStatus,
     language,
     t,
+    showToast,
   } = useApp();
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
+  const todayStr = getLocalDateString(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  // Meal selection deadline applies only to today's meal.
+  // Example deadline: 12:00 PM local device time.
+  const isTodaySelected = selectedDate === todayStr;
+
+  const mealDeadline = new Date();
+  mealDeadline.setHours(12, 0, 0, 0);
+  const userStatus = (
+    currentUser?.status ??
+    currentUser?.accountStatus ??
+    currentUser?.account_status ??
+    'INACTIVE'
+  ).toUpperCase() as 'ACTIVE' | 'INACTIVE' | 'AWAY';
+
+
+  // Previous dates are locked.
+
+  // Today is editable until 12:00 PM.
+
+  // Future dates are editable.
+
+  const isPastDate = selectedDate < todayStr;
+
+
+  const isDeadlinePassed =
+
+    isTodaySelected && new Date() >= mealDeadline;
+
+  const mealLocked = isPastDate || isDeadlinePassed;
   // Filter daily cost for selected date from GET /daily-costs
   const costForDate = dailyCosts.find((c) => c.date.startsWith(selectedDate));
   const foodPrice = parseCurrency(costForDate?.food_price ?? costForDate?.foodPrice ?? 0);
@@ -41,10 +71,30 @@ export const MealsScreen: React.FC = () => {
   const costPerEater = eatersCount > 0 ? foodPrice / eatersCount : 0;
 
   const handleToggle = async (status: 'EAT' | 'NOT_EAT') => {
+    if (userStatus !== 'ACTIVE') {
+      showToast(
+        language === 'km'
+          ? 'គណនីរបស់អ្នកមិនអាចជ្រើសរើសអាហារបានទេ'
+          : 'Your account cannot select meals.',
+        'error'
+      );
+      return;
+    }
+
+    if (mealLocked) {
+      showToast(
+        language === 'km'
+          ? 'អស់ពេលកំណត់សម្រាប់ជ្រើសរើសអាហារថ្ងៃនេះហើយ'
+          : 'The meal selection deadline has passed.',
+        'error'
+      );
+      return;
+    }
+
     try {
       await toggleMealStatus(selectedDate, status);
     } catch {
-      // handled
+      // Error is handled by AppContext
     }
   };
 
@@ -52,7 +102,7 @@ export const MealsScreen: React.FC = () => {
   const dateOptions = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   });
 
   return (
@@ -91,11 +141,10 @@ export const MealsScreen: React.FC = () => {
             <button
               key={dateStr}
               onClick={() => setSelectedDate(dateStr)}
-              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[56px] py-1.5 px-2 rounded-2xl transition-all flex-shrink-0 active:scale-95 ${
-                isSelected
-                  ? 'bg-[var(--primary)] text-white shadow-sm font-bold'
-                  : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]'
-              }`}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[56px] py-1.5 px-2 rounded-2xl transition-all flex-shrink-0 active:scale-95 ${isSelected
+                ? 'bg-[var(--primary)] text-white shadow-sm font-bold'
+                : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]'
+                }`}
             >
               <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
                 {isToday ? t.today : dayName}
@@ -147,34 +196,204 @@ export const MealsScreen: React.FC = () => {
                 </p>
               </div>
 
+              {mealLocked && (
+                <div className="flex items-center gap-2 rounded-2xl bg-black/15 border border-white/10 px-3 py-2.5 mb-2">
+                  <span className="material-symbols-outlined text-[18px] text-[#ffdbca]">
+                    lock
+                  </span>
+
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-white">
+                      {language === 'km'
+                        ? 'ការជ្រើសរើសអាហារបានបិទហើយ'
+                        : 'Meal selection is closed'}
+                    </span>
+
+                    <span className="text-[10px] text-white/60">
+                      {isPastDate
+                        ? language === 'km'
+                          ? 'ថ្ងៃនេះបានកន្លងផុតហើយ'
+                          : 'This date has already passed.'
+                        : language === 'km'
+                          ? 'មិនអាចកែប្រែបន្ទាប់ពីម៉ោង 12:00 PM'
+                          : 'Cannot change after 12:00 PM'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons (min 48px tap targets) */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
+              {/* <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
+                  type="button"
+                  disabled={mealLocked}
                   onClick={() => handleToggle('EAT')}
-                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                    myStatus === 'EAT'
-                      ? 'bg-white text-[var(--primary)] shadow-md'
-                      : 'bg-white/15 text-white hover:bg-white/25'
-                  }`}
+                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
+                    ? 'bg-white/10 text-white/40 cursor-not-allowed opacity-60'
+                    : myStatus === 'EAT'
+                      ? 'bg-white text-[var(--primary)] shadow-md active:scale-95'
+                      : 'bg-white/15 text-white hover:bg-white/25 active:scale-95 cursor-pointer'
+                    }`}
                 >
-                  <span className="material-symbols-outlined text-[20px]">check_circle</span>
+                  <span className="material-symbols-outlined text-[20px]">
+                    {mealLocked ? 'lock' : 'check_circle'}
+                  </span>
+
                   <span>{t.eatTonight}</span>
                 </button>
 
                 <button
+                  type="button"
+                  disabled={mealLocked}
                   onClick={() => handleToggle('NOT_EAT')}
-                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                    myStatus === 'NOT_EAT'
-                      ? 'bg-[var(--secondary)] text-white shadow-md'
-                      : 'bg-white/15 text-white hover:bg-white/25'
-                  }`}
+                  className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
+                    ? 'bg-white/10 text-white/40 cursor-not-allowed opacity-60'
+                    : myStatus === 'NOT_EAT'
+                      ? 'bg-[var(--secondary)] text-white shadow-md active:scale-95'
+                      : 'bg-white/15 text-white hover:bg-white/25 active:scale-95 cursor-pointer'
+                    }`}
                 >
-                  <span className="material-symbols-outlined text-[20px]">cancel</span>
+                  <span className="material-symbols-outlined text-[20px]">
+                    {mealLocked ? 'lock' : 'cancel'}
+                  </span>
+
                   <span>{t.skipMeal}</span>
                 </button>
-              </div>
+              </div> */}
             </div>
           </div>
+
+          {/* Meal Attendance Action */}
+          <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-bold text-[var(--on-surface)]">
+                  {language === 'km' ? 'ការជ្រើសរើសអាហារ' : 'Meal Attendance'}
+                </h3>
+
+                <p className="text-xs text-[var(--on-surface-variant)] mt-1">
+                  {myStatus === 'EAT'
+                    ? language === 'km'
+                      ? 'អ្នកបានជ្រើសរើសញ៉ាំ'
+                      : 'You selected Eat'
+                    : myStatus === 'NOT_EAT'
+                      ? language === 'km'
+                        ? 'អ្នកបានជ្រើសរើសមិនញ៉ាំ'
+                        : 'You selected Skip'
+                      : language === 'km'
+                        ? 'សូមជ្រើសរើស'
+                        : 'Please select your meal'}
+                </p>
+              </div>
+
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-bold ${userStatus === 'ACTIVE'
+                  ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
+                  : 'bg-[var(--error)]/10 text-[var(--error)]'
+                  }`}
+              >
+                {userStatus}
+              </span>
+            </div>
+
+            {userStatus !== 'ACTIVE' ? (
+              <div className="rounded-2xl bg-[var(--error)]/10 border border-[var(--error)]/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-[var(--error)]">
+                    lock
+                  </span>
+
+                  <div>
+                    <p className="text-sm font-bold text-[var(--on-surface)]">
+                      {language === 'km'
+                        ? userStatus === 'AWAY'
+                          ? 'អ្នកត្រូវបានកំណត់ថា AWAY'
+                          : 'គណនីរបស់អ្នកមិនទាន់សកម្ម'
+                        : userStatus === 'AWAY'
+                          ? 'You are marked as AWAY'
+                          : 'Your account is not active'}
+                    </p>
+
+                    <p className="text-xs text-[var(--on-surface-variant)] mt-1">
+                      {language === 'km'
+                        ? 'អ្នកមិនអាចជ្រើសរើសអាហារបានទេ'
+                        : 'You cannot select a meal.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {mealLocked && (
+                  <div className="mb-4 rounded-2xl bg-[var(--error)]/10 border border-[var(--error)]/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px] text-[var(--error)]">
+                        lock
+                      </span>
+
+                      <div>
+                        <p className="text-xs font-bold text-[var(--on-surface)]">
+                          {language === 'km'
+                            ? 'ការជ្រើសរើសអាហារបានបិទហើយ'
+                            : 'Meal selection is closed'}
+                        </p>
+
+                        <p className="text-[10px] text-[var(--on-surface-variant)]">
+                          {isPastDate
+                            ? language === 'km'
+                              ? 'ថ្ងៃនេះបានកន្លងផុតហើយ'
+                              : 'This date has already passed.'
+                            : language === 'km'
+                              ? 'មិនអាចកែប្រែបន្ទាប់ពីម៉ោង 12:00 PM'
+                              : 'Cannot change after 12:00 PM'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={mealLocked}
+                    onClick={() => handleToggle('EAT')}
+                    className={`min-h-[52px] rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${mealLocked
+                      ? 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] opacity-50 cursor-not-allowed'
+                      : myStatus === 'EAT'
+                        ? 'bg-[var(--primary)] text-white shadow-md'
+                        : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[20px]">
+                      {mealLocked ? 'lock' : 'check_circle'}
+                    </span>
+
+                    {language === 'km' ? 'ញ៉ាំ' : 'Eat'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={mealLocked}
+                    onClick={() => handleToggle('NOT_EAT')}
+                    className={`min-h-[52px] rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${mealLocked
+                      ? 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] opacity-50 cursor-not-allowed'
+                      : myStatus === 'NOT_EAT'
+                        ? 'bg-[var(--error)] text-white shadow-md'
+                        : 'bg-[var(--error)]/10 text-[var(--error)] hover:bg-[var(--error)]/20'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[20px]">
+                      {mealLocked ? 'lock' : 'cancel'}
+                    </span>
+
+                    {language === 'km' ? 'មិនញ៉ាំ' : 'Skip'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+
         </div>
 
         {/* Right Column: Attendance Ledger */}
@@ -226,11 +445,10 @@ export const MealsScreen: React.FC = () => {
                       </div>
 
                       <span
-                        className={`px-3 py-1 rounded-full font-bold text-xs flex-shrink-0 ml-2 ${
-                          isEater
-                            ? 'bg-[var(--primary)]/15 text-[var(--primary)]'
-                            : 'bg-[var(--error)]/15 text-[var(--error)]'
-                        }`}
+                        className={`px-3 py-1 rounded-full font-bold text-xs flex-shrink-0 ml-2 ${isEater
+                          ? 'bg-[var(--primary)]/15 text-[var(--primary)]'
+                          : 'bg-[var(--error)]/15 text-[var(--error)]'
+                          }`}
                       >
                         {isEater ? t.eating : t.skipping}
                       </span>
