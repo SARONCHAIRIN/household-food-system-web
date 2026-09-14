@@ -43,7 +43,7 @@ export const formatDualCurrency = (
   const numericVal = typeof amountVal === 'number' ? amountVal : parseFloat(String(amountVal)) || 0;
   const khr = Math.round(numericVal);
   const usd = (khr / exchangeRate).toFixed(2);
-  return `${khr.toLocaleString()} ៛ ($${usd})`;
+  return `${khr.toLocaleString()} KHR ($${usd})`;
 };
 
 export interface CombinedReportData {
