@@ -8,7 +8,7 @@ import {
   printPdf,
   sharePdf,
 } from '../services/settlementReportGenerator';
-import { formatCurrency, parseCurrency } from '../services/apiClient';
+import { parseCurrency } from '../services/apiClient';
 import { useApp } from '../context/AppContext';
 
 interface SettlementReportModalProps {
@@ -21,6 +21,22 @@ interface SettlementReportModalProps {
   endDate: string;
 }
 
+const DEFAULT_EXCHANGE_RATE = 4000;
+
+/**
+ * Format helper for dual currency values (KHR primary with USD sub-display)
+ */
+const renderDual = (amountVal: any, exchangeRate: number = DEFAULT_EXCHANGE_RATE) => {
+  const numericVal = typeof amountVal === 'number' ? amountVal : parseCurrency(amountVal);
+  const khr = Math.round(numericVal || 0);
+  const usd = (khr / exchangeRate).toFixed(2);
+  return {
+    khr: `${khr.toLocaleString()} ៛`,
+    usd: `$${usd}`,
+    combined: `${khr.toLocaleString()} ៛ ($${usd})`,
+  };
+};
+
 export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
   isOpen,
   onClose,
@@ -31,7 +47,6 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
   endDate,
 }) => {
   const { t, language } = useApp();
-  // Selected tab: 'master' or memberId string
   const [activeTab, setActiveTab] = useState<string>('master');
   const [sharing, setSharing] = useState(false);
   const [batchDownloading, setBatchDownloading] = useState(false);
@@ -115,11 +130,9 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
   const handleBatchDownloadAll = async () => {
     setBatchDownloading(true);
     try {
-      // 1. Download Combined Summary
       const masterDoc = buildCombinedHouseholdPdf(combinedData, language);
       downloadPdf(masterDoc, `00_household_master_settlement_${startDate}_${endDate}.pdf`);
 
-      // 2. Download each member's PDF with slight spacing to avoid browser download block
       for (let i = 0; i < memberReports.length; i++) {
         await new Promise((resolve) => setTimeout(resolve, 400));
         const r = memberReports[i];
@@ -140,7 +153,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
       <div className="relative w-full max-w-5xl bg-[var(--surface-container-lowest)] rounded-3xl shadow-2xl border border-[var(--outline)]/15 flex flex-col max-h-[92vh] overflow-hidden my-auto">
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-[var(--outline)]/10 gap-3 bg-[var(--surface-container-low)]">
@@ -190,11 +203,10 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
         <div className="flex items-center gap-1.5 px-4 sm:px-5 py-2.5 border-b border-[var(--outline)]/10 bg-[var(--surface-container-lowest)] overflow-x-auto scrollbar-none flex-shrink-0">
           <button
             onClick={() => setActiveTab('master')}
-            className={`min-h-[44px] px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all flex-shrink-0 ${
-              activeTab === 'master'
+            className={`min-h-[44px] px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all flex-shrink-0 ${activeTab === 'master'
                 ? 'bg-[var(--primary)] text-white shadow-xs'
                 : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-            }`}
+              }`}
           >
             <span className="material-symbols-outlined text-[18px]">assessment</span>
             <span>Master Summary</span>
@@ -202,22 +214,22 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
 
           {memberReports.map((r) => {
             const isTabActive = activeTab === String(r.member.memberId);
+            const dueDual = renderDual(r.member.totalDue);
             return (
               <button
                 key={r.member.memberId}
                 onClick={() => setActiveTab(String(r.member.memberId))}
-                className={`min-h-[44px] px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all flex-shrink-0 ${
-                  isTabActive
+                className={`min-h-[44px] px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all flex-shrink-0 ${isTabActive
                     ? 'bg-[var(--primary)] text-white shadow-xs'
                     : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-                }`}
+                  }`}
               >
                 <div className="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center text-[10px]">
                   {r.member.name.slice(0, 1).toUpperCase()}
                 </div>
                 <span>{r.member.name}</span>
                 <span className="text-[10px] opacity-80">
-                  (${parseCurrency(r.member.totalDue).toFixed(2)})
+                  ({dueDual.usd})
                 </span>
               </button>
             );
@@ -275,7 +287,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
 
           {/* Tab 1: Master Summary View */}
           {activeTab === 'master' && (
-            <div className="max-w-4xl mx-auto bg-white dark:bg-[#151c24] rounded-3xl p-6 sm:p-8 shadow-sm border border-[var(--outline)]/10 space-y-6 text-[#111c2d] dark:text-[#e1e7f0]">
+            <div className="max-w-4xl mx-auto bg-white dark:bg-[#151c24] rounded-3xl p-6 sm:p-8 shadow-xs border border-[var(--outline)]/10 space-y-6 text-[#111c2d] dark:text-[#e1e7f0]">
               {/* Document Header */}
               <div className="flex flex-col sm:flex-row sm:items-start justify-between pb-5 border-b border-black/10 dark:border-white/10 gap-4">
                 <div className="flex items-center gap-3">
@@ -287,7 +299,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                       Household Food
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Master Billing & Settlement Summary
+                      Master Billing & Settlement Summary (KHR & USD)
                     </p>
                   </div>
                 </div>
@@ -305,14 +317,17 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                 </div>
               </div>
 
-              {/* Pool Context Stats */}
+              {/* Pool Context Stats (Dual Currency) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-black/5 dark:border-white/5">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                     Total Food Prep
                   </span>
                   <span className="text-xl font-extrabold text-[#004f35] dark:text-[#9ff4ca] mt-1 block">
-                    {formatCurrency(combinedData.poolSummary.totalFoodPrice)}
+                    {renderDual(combinedData.poolSummary.totalFoodPrice).khr}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500 block">
+                    ({renderDual(combinedData.poolSummary.totalFoodPrice).usd})
                   </span>
                 </div>
 
@@ -321,7 +336,10 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                     Pantry Groceries
                   </span>
                   <span className="text-xl font-extrabold text-[#004f35] dark:text-[#9ff4ca] mt-1 block">
-                    {formatCurrency(combinedData.poolSummary.totalIngredientPrice)}
+                    {renderDual(combinedData.poolSummary.totalIngredientPrice).khr}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500 block">
+                    ({renderDual(combinedData.poolSummary.totalIngredientPrice).usd})
                   </span>
                 </div>
 
@@ -330,19 +348,22 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                     Total Shared Pool
                   </span>
                   <span className="text-xl font-extrabold text-emerald-800 dark:text-emerald-200 mt-1 block">
-                    {formatCurrency(combinedData.poolSummary.totalPool)}
+                    {renderDual(combinedData.poolSummary.totalPool).khr}
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 block">
+                    ({renderDual(combinedData.poolSummary.totalPool).usd})
                   </span>
                 </div>
               </div>
 
-              {/* Member Breakdown Table */}
+              {/* Member Breakdown Table (Dual Currency) */}
               <div className="space-y-2">
                 <div className="flex flex-col">
                   <h4 className="text-sm font-bold text-[#004f35] dark:text-[#9ff4ca] uppercase tracking-wider">
-                    Member Cost & Wallet Status (From GET /bills/summary)
+                    Member Cost & Wallet Status (KHR & USD)
                   </h4>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    This is the raw cost for the period — it does not subtract prior settlements
+                    Raw cost for period (GET /bills/summary) before executing wallet deductions
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -352,9 +373,9 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                         <th className="p-3">Member</th>
                         <th className="p-3">Username</th>
                         <th className="p-3 text-center">Days</th>
-                        <th className="p-3 text-right">Food ($)</th>
-                        <th className="p-3 text-right">Ingr ($)</th>
-                        <th className="p-3 text-right">Period Cost (recalculated)</th>
+                        <th className="p-3 text-right">Food Share</th>
+                        <th className="p-3 text-right">Ingr Share</th>
+                        <th className="p-3 text-right">Period Cost</th>
                         <th className="p-3 text-right">Current Deposit</th>
                         <th className="p-3 text-center">Coverage</th>
                       </tr>
@@ -365,6 +386,11 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                         const due = parseCurrency(m.totalDue);
                         const isCovered = bal >= due;
 
+                        const foodDual = renderDual(m.foodCost);
+                        const ingDual = renderDual(m.ingredientCost);
+                        const dueDual = renderDual(due);
+                        const balDual = renderDual(bal);
+
                         return (
                           <tr key={m.memberId} className="hover:bg-slate-50 dark:hover:bg-white/5">
                             <td className="p-3 font-bold text-[#111c2d] dark:text-white">
@@ -372,19 +398,28 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                             </td>
                             <td className="p-3 text-slate-500">@{m.username}</td>
                             <td className="p-3 text-center font-semibold">{m.daysEaten}</td>
-                            <td className="p-3 text-right">{formatCurrency(m.foodCost)}</td>
-                            <td className="p-3 text-right">{formatCurrency(m.ingredientCost)}</td>
-                            <td className="p-3 text-right font-bold text-[#004f35] dark:text-[#9ff4ca]">
-                              {formatCurrency(due)}
+                            <td className="p-3 text-right">
+                              <span className="block">{foodDual.khr}</span>
+                              <span className="text-[10px] text-slate-400">({foodDual.usd})</span>
                             </td>
-                            <td className="p-3 text-right font-medium">{formatCurrency(bal)}</td>
+                            <td className="p-3 text-right">
+                              <span className="block">{ingDual.khr}</span>
+                              <span className="text-[10px] text-slate-400">({ingDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="font-bold text-[#004f35] dark:text-[#9ff4ca] block">{dueDual.khr}</span>
+                              <span className="text-[10px] text-slate-400">({dueDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-right font-medium">
+                              <span className="block">{balDual.khr}</span>
+                              <span className="text-[10px] text-slate-400">({balDual.usd})</span>
+                            </td>
                             <td className="p-3 text-center">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  isCovered
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isCovered
                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                     : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                }`}
+                                  }`}
                               >
                                 {isCovered ? 'Covered' : 'Needs Top-up'}
                               </span>
@@ -401,7 +436,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
 
           {/* Tab 2: Individual Member Statement View */}
           {activeTab !== 'master' && currentMemberReport && (
-            <div className="max-w-4xl mx-auto bg-white dark:bg-[#151c24] rounded-3xl p-6 sm:p-8 shadow-sm border border-[var(--outline)]/10 space-y-6 text-[#111c2d] dark:text-[#e1e7f0]">
+            <div className="max-w-4xl mx-auto bg-white dark:bg-[#151c24] rounded-3xl p-6 sm:p-8 shadow-xs border border-[var(--outline)]/10 space-y-6 text-[#111c2d] dark:text-[#e1e7f0]">
               {/* Document Header */}
               <div className="flex flex-col sm:flex-row sm:items-start justify-between pb-5 border-b border-black/10 dark:border-white/10 gap-4">
                 <div className="flex items-center gap-3">
@@ -413,7 +448,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                       Household Food
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Settlement Statement & Meal Breakdown
+                      Settlement Statement & Meal Breakdown (KHR & USD)
                     </p>
                   </div>
                 </div>
@@ -455,25 +490,25 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                     Shared Household Pool Context
                   </span>
                   <p className="text-slate-600 dark:text-slate-300">
-                    Total Food Expenses: {formatCurrency(currentMemberReport.poolSummary.totalFoodPrice)}
+                    Total Food Expenses: {renderDual(currentMemberReport.poolSummary.totalFoodPrice).combined}
                   </p>
                   <p className="text-slate-600 dark:text-slate-300">
-                    Total Pantry Groceries: {formatCurrency(currentMemberReport.poolSummary.totalIngredientPrice)}
+                    Total Pantry Groceries: {renderDual(currentMemberReport.poolSummary.totalIngredientPrice).combined}
                   </p>
                   <p className="text-slate-600 dark:text-slate-300 font-semibold">
-                    Total Pool: {formatCurrency(currentMemberReport.poolSummary.totalPool)} ({currentMemberReport.poolSummary.activeMembersCount} Active Diners)
+                    Total Pool: {renderDual(currentMemberReport.poolSummary.totalPool).combined} ({currentMemberReport.poolSummary.activeMembersCount} Active Diners)
                   </p>
                 </div>
               </div>
 
-              {/* Total Due Box (Strictly from bills/summary memberSummaries) */}
+              {/* Total Due Box (Dual Currency) */}
               <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block">
                     Period Cost (recalculated)
                   </span>
                   <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
-                    Food: {formatCurrency(currentMemberReport.member.foodCost)} + Pantry: {formatCurrency(currentMemberReport.member.ingredientCost)}
+                    Food: {renderDual(currentMemberReport.member.foodCost).combined} + Pantry: {renderDual(currentMemberReport.member.ingredientCost).combined}
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 italic">
                     Raw cost for the period — does not subtract prior settlements
@@ -482,10 +517,13 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
 
                 <div className="text-left sm:text-right">
                   <span className="text-2xl font-extrabold text-[#004f35] dark:text-[#9ff4ca] block">
-                    {formatCurrency(currentMemberReport.member.totalDue)}
+                    {renderDual(currentMemberReport.member.totalDue).khr}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Current Deposit Balance: {formatCurrency(currentMemberReport.depositBalance.balance)}
+                  <span className="text-xs font-bold text-[#004f35] dark:text-[#9ff4ca] block">
+                    ({renderDual(currentMemberReport.member.totalDue).usd})
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-1">
+                    Current Deposit Balance: {renderDual(currentMemberReport.depositBalance.balance).combined}
                   </span>
                 </div>
               </div>
@@ -507,8 +545,8 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                       <tr>
                         <th className="p-2.5">Date</th>
                         <th className="p-2.5">Attendance Status</th>
-                        <th className="p-2.5 text-right">Food Share ($)</th>
-                        <th className="p-2.5 text-right">Ingredient Share ($)</th>
+                        <th className="p-2.5 text-right">Food Share</th>
+                        <th className="p-2.5 text-right">Ingredient Share</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -519,28 +557,46 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        currentMemberReport.meals.map((m, idx) => (
-                          <tr key={m.date || idx} className="hover:bg-slate-50 dark:hover:bg-white/5">
-                            <td className="p-2.5 font-medium">{m.date}</td>
-                            <td className="p-2.5">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  m.status === 'EAT'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                                }`}
-                              >
-                                {m.status}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-right">
-                              {m.foodCost > 0 ? formatCurrency(m.foodCost) : '$0.00'}
-                            </td>
-                            <td className="p-2.5 text-right">
-                              {m.ingredientCost > 0 ? formatCurrency(m.ingredientCost) : '$0.00'}
-                            </td>
-                          </tr>
-                        ))
+                        currentMemberReport.meals.map((m, idx) => {
+                          const fDual = renderDual(m.foodCost);
+                          const iDual = renderDual(m.ingredientCost);
+
+                          return (
+                            <tr key={m.date || idx} className="hover:bg-slate-50 dark:hover:bg-white/5">
+                              <td className="p-2.5 font-medium">{m.date}</td>
+                              <td className="p-2.5">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${m.status === 'EAT'
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                    }`}
+                                >
+                                  {m.status}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-right">
+                                {m.foodCost > 0 ? (
+                                  <>
+                                    <span className="block font-medium">{fDual.khr}</span>
+                                    <span className="text-[10px] text-slate-400">({fDual.usd})</span>
+                                  </>
+                                ) : (
+                                  '0 ៛ ($0.00)'
+                                )}
+                              </td>
+                              <td className="p-2.5 text-right">
+                                {m.ingredientCost > 0 ? (
+                                  <>
+                                    <span className="block font-medium">{iDual.khr}</span>
+                                    <span className="text-[10px] text-slate-400">({iDual.usd})</span>
+                                  </>
+                                ) : (
+                                  '0 ៛ ($0.00)'
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                     <tfoot className="bg-slate-50 dark:bg-white/5 font-bold border-t border-slate-200 dark:border-slate-800">
@@ -550,10 +606,12 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                         </td>
                         <td className="p-2.5"></td>
                         <td className="p-2.5 text-right">
-                          {formatCurrency(currentMemberReport.member.foodCost)}
+                          <span className="block">{renderDual(currentMemberReport.member.foodCost).khr}</span>
+                          <span className="text-[10px] font-normal text-slate-400">({renderDual(currentMemberReport.member.foodCost).usd})</span>
                         </td>
                         <td className="p-2.5 text-right">
-                          {formatCurrency(currentMemberReport.member.ingredientCost)}
+                          <span className="block">{renderDual(currentMemberReport.member.ingredientCost).khr}</span>
+                          <span className="text-[10px] font-normal text-slate-400">({renderDual(currentMemberReport.member.ingredientCost).usd})</span>
                         </td>
                       </tr>
                     </tfoot>
@@ -589,36 +647,41 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                         (currentMemberReport.depositBalance.history || []).slice(0, 6).map((tx, idx) => {
                           const date = tx.created_at || tx.createdAt ? (tx.created_at || tx.createdAt)!.split('T')[0] : 'N/A';
                           const isDeposit = tx.type === 'DEPOSIT';
+                          const txDual = renderDual(Math.abs(parseCurrency(tx.amount)));
+                          const afterDual = tx.balance_after !== undefined ? renderDual(parseCurrency(tx.balance_after)) : null;
 
                           return (
                             <tr key={tx.id || idx} className="hover:bg-slate-50 dark:hover:bg-white/5">
                               <td className="p-2.5">{date}</td>
                               <td className="p-2.5">
                                 <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    isDeposit
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isDeposit
                                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                       : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                  }`}
+                                    }`}
                                 >
                                   {tx.type}
                                 </span>
                               </td>
                               <td
-                                className={`p-2.5 text-right font-bold ${
-                                  isDeposit ? 'text-emerald-600' : 'text-rose-600'
-                                }`}
+                                className={`p-2.5 text-right font-bold ${isDeposit ? 'text-emerald-600' : 'text-rose-600'
+                                  }`}
                               >
-                                {isDeposit ? '+' : '-'}
-                                {formatCurrency(Math.abs(parseCurrency(tx.amount)))}
+                                <span className="block">{isDeposit ? '+' : '-'}{txDual.khr}</span>
+                                <span className="text-[10px] font-normal text-slate-400">({isDeposit ? '+' : '-'}{txDual.usd})</span>
                               </td>
                               <td className="p-2.5 text-slate-500 truncate max-w-xs">
                                 {tx.note || (isDeposit ? 'Prepaid Deposit' : 'Settlement Deduction')}
                               </td>
                               <td className="p-2.5 text-right">
-                                {tx.balance_after !== undefined
-                                  ? formatCurrency(parseCurrency(tx.balance_after))
-                                  : '-'}
+                                {afterDual ? (
+                                  <>
+                                    <span className="block font-medium">{afterDual.khr}</span>
+                                    <span className="text-[10px] text-slate-400">({afterDual.usd})</span>
+                                  </>
+                                ) : (
+                                  '-'
+                                )}
                               </td>
                             </tr>
                           );
@@ -642,7 +705,7 @@ export const SettlementReportModal: React.FC<SettlementReportModalProps> = ({
                   • Transfer options: ABA Bank / Bakong transfer or direct cash payment to Household Food Administrator.
                 </p>
                 <p className="text-amber-900/90 dark:text-amber-200">
-                  • Note: Generating or viewing this statement has <strong>NOT</strong> deducted your balance yet. The deduction only takes effect when the admin runs Settle & Deduct.
+                  • Note: Viewing this preview does <strong>NOT</strong> deduct your balance yet. Deductions only execute when Admin triggers Settle & Deduct.
                 </p>
               </div>
             </div>

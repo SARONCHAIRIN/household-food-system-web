@@ -1,8 +1,26 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { formatCurrency, parseCurrency } from '../services/apiClient';
+import { parseCurrency } from '../services/apiClient';
 import { getLocalDateString } from '../services/billingDateUtils';
 import { getMealConfirmationType } from '../types/api';
+
+const DEFAULT_EXCHANGE_RATE = 4000;
+
+/**
+ * Format amounts cleanly as KHR (៛)
+ */
+const formatKHR = (amount: number | string): string => {
+  const num = Math.round(Number(amount) || 0);
+  return `${num.toLocaleString()} ៛`;
+};
+
+/**
+ * Format amounts cleanly as USD ($)
+ */
+const formatUSD = (amount: number | string): string => {
+  const num = Number(amount) || 0;
+  return `$${num.toFixed(2)}`;
+};
 
 export const DashboardScreen: React.FC = () => {
   const {
@@ -42,7 +60,7 @@ export const DashboardScreen: React.FC = () => {
   // Today's logged cost (if any) from GET /daily-costs
   const todayCost = dailyCosts.find((c) => c.date.startsWith(todayStr));
 
-  // Compute live pool sums strictly from GET /daily-costs
+  // Compute live pool sums strictly from GET /daily-costs (all stored numbers handled in KHR)
   const totalFoodPrep = dailyCosts.reduce(
     (acc, c) => acc + parseCurrency(c.food_price ?? c.foodPrice ?? 0),
     0
@@ -59,7 +77,6 @@ export const DashboardScreen: React.FC = () => {
     totalPool > 0 ? ((totalPantry / totalPool) * 100).toFixed(1) : '0.0';
 
   // Add Expense Form State (admin only)
-  // Default date picker to today's real local device date
   const [expenseDate, setExpenseDate] = useState(todayStr);
   const [foodPrice, setFoodPrice] = useState('');
   const [ingredientPrice, setIngredientPrice] = useState('');
@@ -70,10 +87,10 @@ export const DashboardScreen: React.FC = () => {
   const existingCostForDate = dailyCosts.find(
     (c) => c.date && c.date.split('T')[0] === expenseDate
   );
+
   // Meal selection deadline: 12:00 PM local device time
   const mealDeadline = new Date();
   mealDeadline.setHours(12, 0, 0, 0);
-
   const mealLocked = new Date() >= mealDeadline;
 
   const userStatus = (
@@ -115,16 +132,25 @@ export const DashboardScreen: React.FC = () => {
     const fPrice = parseFloat(foodPrice) || 0;
     const iPrice = parseFloat(ingredientPrice) || 0;
     if (fPrice <= 0 && iPrice <= 0) {
-      showToast(language === 'km' ? 'សូមបញ្ចូលចំនួនទឹកប្រាក់សម្រាប់ម្ហូប ឬគ្រឿងទេស' : 'Please enter an amount for food or ingredients', 'error');
+      showToast(
+        language === 'km'
+          ? 'សូមបញ្ចូលចំនួនទឹកប្រាក់សម្រាប់ម្ហូប ឬគ្រឿងទេស (៛)'
+          : 'Please enter an amount for food or ingredients (KHR)',
+        'error'
+      );
       return;
     }
 
     if (!expenseDate) {
-      showToast(language === 'km' ? 'សូមជ្រើសរើសកាលបរិច្ឆេទត្រឹមត្រូវ' : 'Please select a valid date', 'error');
+      showToast(
+        language === 'km'
+          ? 'សូមជ្រើសរើសកាលបរិច្ឆេទត្រឹមត្រូវ'
+          : 'Please select a valid date',
+        'error'
+      );
       return;
     }
 
-    // If duplicate exists and user hasn't explicitly confirmed, show confirmation modal
     if (existingCostForDate && !showDuplicateConfirm) {
       setShowDuplicateConfirm(true);
       return;
@@ -132,11 +158,9 @@ export const DashboardScreen: React.FC = () => {
 
     setSavingExpense(true);
     try {
-      // Send exact date selected in the picker (YYYY-MM-DD)
       await addDailyExpense(fPrice, iPrice, expenseDate);
       setFoodPrice('');
       setIngredientPrice('');
-      // Reset date picker back to today's real date
       setExpenseDate(getLocalDateString(new Date()));
       setShowDuplicateConfirm(false);
     } catch {
@@ -146,7 +170,6 @@ export const DashboardScreen: React.FC = () => {
     }
   };
 
-  // Active household counts from real members
   const activeCount = members.filter((m) => m.status === 'ACTIVE').length;
   const registeredCount = members.length;
 
@@ -191,9 +214,9 @@ export const DashboardScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Responsive Top Grid: Live Food Pool & Tonight's Dinner (Side-by-side on tablet/desktop) */}
+      {/* Responsive Top Grid: Live Food Pool & Tonight's Dinner */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
-        {/* Primary Live Food Pool Card */}
+        {/* Primary Live Food Pool Card (KHR Primary, USD Subtext) */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004f35] via-[#006948] to-[#004f35] text-white p-5 shadow-lg border border-white/10 flex flex-col justify-between">
           <div className="relative z-10 flex flex-col space-y-4">
             <div className="flex items-start justify-between gap-2">
@@ -214,14 +237,18 @@ export const DashboardScreen: React.FC = () => {
             </div>
 
             <div>
-              <div className="flex items-baseline gap-1.5">
+              <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-4xl font-extrabold text-white tracking-tight">
-                  {formatCurrency(totalPool)}
+                  {formatKHR(totalPool)}
                 </span>
-                <span className="text-xs font-bold text-[#9ff4ca]">{t.usdDue}</span>
+                <span className="text-sm font-bold text-[#9ff4ca]">
+                  ({formatUSD(totalPool / DEFAULT_EXCHANGE_RATE)})
+                </span>
               </div>
               <p className="text-xs text-[#9ff4ca]/80 mt-1">
-                {t.aggregatedFromApi}
+                {language === 'km'
+                  ? `ទិន្នន័យជាក់ស្តែងពី GET /daily-costs (អត្រាប្តូរប្រាក់ $1 = ${DEFAULT_EXCHANGE_RATE.toLocaleString()} ៛)`
+                  : `Aggregated live totals from GET /daily-costs ($1 = ${DEFAULT_EXCHANGE_RATE.toLocaleString()} KHR)`}
               </p>
             </div>
 
@@ -234,10 +261,10 @@ export const DashboardScreen: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-lg font-extrabold text-white">
-                    {formatCurrency(totalFoodPrep)}
+                    {formatKHR(totalFoodPrep)}
                   </div>
                   <div className="text-[11px] text-[#9ff4ca]/80 mt-0.5">
-                    {foodSharePct}% {t.percentOfPool}
+                    {formatUSD(totalFoodPrep / DEFAULT_EXCHANGE_RATE)} · {foodSharePct}%
                   </div>
                 </div>
               </div>
@@ -249,10 +276,10 @@ export const DashboardScreen: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-lg font-extrabold text-white">
-                    {formatCurrency(totalPantry)}
+                    {formatKHR(totalPantry)}
                   </div>
                   <div className="text-[11px] text-[#ffdbca]/80 mt-0.5">
-                    {pantrySharePct}% {t.percentOfPool}
+                    {formatUSD(totalPantry / DEFAULT_EXCHANGE_RATE)} · {pantrySharePct}%
                   </div>
                 </div>
               </div>
@@ -273,7 +300,7 @@ export const DashboardScreen: React.FC = () => {
                 </div>
                 <h2 className="text-base font-bold text-[var(--on-surface)] mt-1 truncate">
                   {todayCost
-                    ? `${t.costLogged}: ${t.foodPrep} $${parseCurrency(todayCost.food_price ?? todayCost.foodPrice ?? 0).toFixed(2)} | ${t.ingredientPantry} $${parseCurrency(todayCost.ingredient_price ?? todayCost.ingredientPrice ?? 0).toFixed(2)}`
+                    ? `${t.costLogged}: ${t.foodPrep} ${formatKHR(parseCurrency(todayCost.food_price ?? todayCost.foodPrice ?? 0))} | ${t.ingredientPantry} ${formatKHR(parseCurrency(todayCost.ingredient_price ?? todayCost.ingredientPrice ?? 0))}`
                     : t.noCostLoggedToday}
                 </h2>
                 <span className="text-xs text-[var(--on-surface-variant)]">
@@ -286,7 +313,7 @@ export const DashboardScreen: React.FC = () => {
               </span>
             </div>
 
-            {/* Attendance Confirmation Badge & Status Indicator */}
+            {/* Attendance Badges */}
             <div className="pt-3 pb-1">
               {myTodayConfirmationType === 'AUTO' && (
                 <div className="flex flex-col space-y-2.5">
@@ -302,7 +329,6 @@ export const DashboardScreen: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Context Banner / Explanatory Tooltip */}
                   <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5 shadow-xs">
                     <span className="material-symbols-outlined text-[18px] text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5">
                       info
@@ -347,19 +373,18 @@ export const DashboardScreen: React.FC = () => {
                 </div>
               )}
             </div>
+
             {mealLocked && (
               <div className="mt-3 flex items-center gap-2 rounded-2xl bg-gray-100 border border-gray-200 px-3 py-2.5 text-xs text-gray-500">
                 <span className="material-symbols-outlined text-[18px]">
                   lock
                 </span>
-
                 <div className="flex flex-col">
                   <span className="font-bold">
                     {language === 'km'
                       ? 'ការជ្រើសរើសអាហារបានបិទហើយ'
                       : 'Meal selection is closed'}
                   </span>
-
                   <span className="text-[10px]">
                     {language === 'km'
                       ? 'មិនអាចកែប្រែវត្តមានបន្ទាប់ពីម៉ោង 12:00 PM'
@@ -369,91 +394,46 @@ export const DashboardScreen: React.FC = () => {
               </div>
             )}
 
-            {/* Attendance Action Buttons (min 48px touch target) */}
+            {/* Attendance Buttons */}
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
-
                 type="button"
-
                 disabled={mealLocked || userStatus !== 'ACTIVE'}
                 onClick={() => handleDinnerSelection('EAT')}
-
                 className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
-
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
-
-                  : isEating === true
-
-                    ? 'bg-[var(--primary)] text-white shadow-md ring-2 ring-[var(--primary)] active:scale-95 cursor-pointer'
-
-                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
-
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                    : isEating === true
+                      ? 'bg-[var(--primary)] text-white shadow-md ring-2 ring-[var(--primary)] active:scale-95 cursor-pointer'
+                      : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
                   }`}
-
               >
-
                 <span className="material-symbols-outlined text-[20px]">
-
                   {mealLocked ? 'lock' : 'check_circle'}
-
                 </span>
-
                 <div className="flex flex-col items-start text-left leading-tight">
-
                   <span>{t.eatTonight}</span>
-
-                  <span className="text-[10px] opacity-80">
-
-                    {t.eatTonightKh}
-
-                  </span>
-
+                  <span className="text-[10px] opacity-80">{t.eatTonightKh}</span>
                 </div>
-
               </button>
 
-              {/* SKIP MEAL */}
-
               <button
-
                 type="button"
-
                 disabled={mealLocked}
-
                 onClick={() => handleDinnerSelection('NOT_EAT')}
-
                 className={`min-h-[48px] px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${mealLocked
-
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
-
-                  : isEating === false
-
-                    ? 'bg-[var(--secondary)] text-white shadow-md ring-2 ring-[var(--secondary)] active:scale-95 cursor-pointer'
-
-                    : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
-
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                    : isEating === false
+                      ? 'bg-[var(--secondary)] text-white shadow-md ring-2 ring-[var(--secondary)] active:scale-95 cursor-pointer'
+                      : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] active:scale-95 cursor-pointer'
                   }`}
-
               >
-
                 <span className="material-symbols-outlined text-[20px]">
-
                   {mealLocked ? 'lock' : 'cancel'}
-
                 </span>
-
                 <div className="flex flex-col items-start text-left leading-tight">
-
                   <span>{t.skipMeal}</span>
-
-                  <span className="text-[10px] opacity-80">
-
-                    {t.skipMealKh}
-
-                  </span>
-
+                  <span className="text-[10px] opacity-80">{t.skipMealKh}</span>
                 </div>
-
               </button>
             </div>
           </div>
@@ -484,7 +464,7 @@ export const DashboardScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Household Members List (2-column responsive grid on tablet & desktop) */}
+      {/* Household Members List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -513,7 +493,6 @@ export const DashboardScreen: React.FC = () => {
             {language === 'km' ? 'មិនមានទិន្នន័យសមាជិកទេ' : 'No members returned from GET /members'}
           </div>
         ) : (
-          /* Multi-column 2-column grid for tablet & desktop */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3">
             {members.map((m) => {
               const isCurrent = String(m.id) === String(currentUser?.id) || m.username === currentUser?.username;
@@ -562,8 +541,8 @@ export const DashboardScreen: React.FC = () => {
                       return (
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${memberConf === 'AUTO'
-                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
-                            : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
                             }`}
                           title={memberConf === 'AUTO' ? t.autoConfirmedTooltip : t.manualConfirmedTooltip}
                         >
@@ -578,8 +557,8 @@ export const DashboardScreen: React.FC = () => {
                     })()}
                     <span
                       className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.status === 'ACTIVE'
-                        ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
-                        : 'bg-[var(--surface-container-highest)] text-[var(--on-surface-variant)]'
+                          ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
+                          : 'bg-[var(--surface-container-highest)] text-[var(--on-surface-variant)]'
                         }`}
                     >
                       {m.status === 'ACTIVE' ? t.active : t.inactive}
@@ -592,7 +571,7 @@ export const DashboardScreen: React.FC = () => {
         )}
       </div>
 
-      {/* Recent Daily Costs (Multi-column responsive grid on tablet & desktop) */}
+      {/* Recent Daily Costs List (KHR Primary) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -633,17 +612,17 @@ export const DashboardScreen: React.FC = () => {
                         {dateStr}
                       </span>
                       <span className="text-[11px] text-[var(--on-surface-variant)] truncate">
-                        {t.foodPrep} ${fPrice.toFixed(2)} | {t.ingredientPantry} ${iPrice.toFixed(2)}
+                        {t.foodPrep} {formatKHR(fPrice)} | {t.ingredientPantry} {formatKHR(iPrice)}
                       </span>
                     </div>
                   </div>
 
                   <div className="text-right flex-shrink-0">
-                    <span className="text-sm font-extrabold text-[var(--on-surface)]">
-                      {formatCurrency(total)}
+                    <span className="text-xs sm:text-sm font-extrabold text-[var(--on-surface)] block">
+                      {formatKHR(total)}
                     </span>
                     <span className="block text-[10px] font-bold text-[var(--primary)]">
-                      {t.costLogged}
+                      ({formatUSD(total / DEFAULT_EXCHANGE_RATE)})
                     </span>
                   </div>
                 </div>
@@ -653,7 +632,7 @@ export const DashboardScreen: React.FC = () => {
         )}
       </div>
 
-      {/* POST /daily-costs Form (Admin only) */}
+      {/* POST /daily-costs Form (Admin only, KHR Input with USD Estimate) */}
       {userRole === 'ADMIN' ? (
         <div
           id="expense-sheet"
@@ -666,7 +645,7 @@ export const DashboardScreen: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-sm font-bold text-[var(--on-surface)]">
-                  {language === 'km' ? 'កត់ត្រាចំណាយប្រចាំថ្ងៃ (អ្នកគ្រប់គ្រង)' : 'Record Daily Cost (Admin)'}
+                  {language === 'km' ? 'កត់ត្រាចំណាយប្រចាំថ្ងៃជាប្រាក់រៀល (អ្នកគ្រប់គ្រង)' : 'Record Daily Cost in KHR (Admin)'}
                 </h4>
                 <p className="text-[11px] font-semibold text-[var(--primary)]">
                   POST /daily-costs {expenseDate ? `(${expenseDate})` : ''}
@@ -693,7 +672,7 @@ export const DashboardScreen: React.FC = () => {
             )}
           </div>
 
-          {/* Explicit Date Picker Field directly below the title */}
+          {/* Date Picker */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-[var(--on-surface-variant)] flex items-center gap-1">
@@ -715,7 +694,7 @@ export const DashboardScreen: React.FC = () => {
             />
           </div>
 
-          {/* Duplicate Cost Warning Banner if record already exists for selected date */}
+          {/* Duplicate Cost Warning Banner */}
           {existingCostForDate && (
             <div className="p-3.5 rounded-2xl bg-[var(--error-container)]/30 border border-[var(--error)]/30 text-[var(--error)] text-xs space-y-1.5 animate-fadeIn">
               <div className="flex items-center gap-2 font-bold">
@@ -724,42 +703,80 @@ export const DashboardScreen: React.FC = () => {
               </div>
               <p className="leading-relaxed">
                 {language === 'km'
-                  ? `បានកត់ត្រាចំណាយសម្រាប់ ${expenseDate} រួចហើយ៖ ម្ហូប $${parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0).toFixed(2)} / គ្រឿងទេស $${parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0).toFixed(2)}។`
-                  : `A cost record already exists for ${expenseDate}: Food $${parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0).toFixed(2)} / Ingredient $${parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0).toFixed(2)}.`}
-              </p>
-              <p className="text-[11px] opacity-90">
-                {language === 'km' ? 'ការរក្សាទុកទាមទារការបញ្ជាក់ច្បាស់លាស់ដើម្បីជៀសវាងការត្រួតគ្នាដោយអចេតនា។' : 'Saving will require explicit confirmation to avoid accidental duplicates.'}
+                  ? `បានកត់ត្រាចំណាយសម្រាប់ ${expenseDate} រួចហើយ៖ ម្ហូប ${formatKHR(parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0))} / គ្រឿងទេស ${formatKHR(parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0))}។`
+                  : `A cost record already exists for ${expenseDate}: Food ${formatKHR(parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0))} / Ingredient ${formatKHR(parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0))}.`}
               </p>
             </div>
           )}
 
+          {/* Input Fields in KHR (៛) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[var(--on-surface-variant)]">
-                {t.foodPrep} ($)
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-semibold text-[var(--on-surface-variant)]">
+                  {t.foodPrep} (៛)
+                </label>
+                {foodPrice && (
+                  <span className="text-[11px] font-bold text-[var(--primary)]">
+                    ≈ {formatUSD(parseFloat(foodPrice) / DEFAULT_EXCHANGE_RATE)}
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
-                step="0.5"
+                step="500"
                 value={foodPrice}
                 onChange={(e) => setFoodPrice(e.target.value)}
-                placeholder="10.00"
+                placeholder="40000"
                 className="w-full min-h-[48px] px-3.5 rounded-2xl bg-[var(--surface-container-lowest)] text-[var(--on-surface)] font-bold text-sm outline-none shadow-xs"
               />
+              {/* Quick Presets */}
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                {['10000', '20000', '40000', '50000'].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setFoodPrice(val)}
+                    className="py-1 rounded-xl bg-[var(--surface-container-lowest)] text-[10px] font-bold text-[var(--on-surface-variant)] hover:bg-[var(--primary)] hover:text-white transition-all"
+                  >
+                    +{(parseInt(val, 10) / 1000)}k ៛
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[var(--on-surface-variant)]">
-                {t.ingredientPantry} ($)
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-semibold text-[var(--on-surface-variant)]">
+                  {t.ingredientPantry} (៛)
+                </label>
+                {ingredientPrice && (
+                  <span className="text-[11px] font-bold text-[var(--primary)]">
+                    ≈ {formatUSD(parseFloat(ingredientPrice) / DEFAULT_EXCHANGE_RATE)}
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
-                step="0.5"
+                step="500"
                 value={ingredientPrice}
                 onChange={(e) => setIngredientPrice(e.target.value)}
-                placeholder="5.00"
+                placeholder="10000"
                 className="w-full min-h-[48px] px-3.5 rounded-2xl bg-[var(--surface-container-lowest)] text-[var(--on-surface)] font-bold text-sm outline-none shadow-xs"
               />
+              {/* Quick Presets */}
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                {['5000', '10000', '20000', '30000'].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setIngredientPrice(val)}
+                    className="py-1 rounded-xl bg-[var(--surface-container-lowest)] text-[10px] font-bold text-[var(--on-surface-variant)] hover:bg-[var(--primary)] hover:text-white transition-all"
+                  >
+                    +{(parseInt(val, 10) / 1000)}k ៛
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -767,8 +784,8 @@ export const DashboardScreen: React.FC = () => {
             onClick={handleSaveExpense}
             disabled={savingExpense || !expenseDate}
             className={`w-full min-h-[48px] rounded-full text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 ${existingCostForDate
-              ? 'bg-amber-600 hover:bg-amber-700'
-              : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
+                ? 'bg-amber-600 hover:bg-amber-700'
+                : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
               }`}
           >
             {savingExpense ? (
@@ -782,8 +799,12 @@ export const DashboardScreen: React.FC = () => {
               {savingExpense
                 ? t.loading
                 : existingCostForDate
-                  ? (language === 'km' ? `ពិនិត្យទិន្នន័យត្រួតគ្នា (${expenseDate})` : `Review Duplicate for ${expenseDate}`)
-                  : (language === 'km' ? `រក្សាទុកចំណាយសម្រាប់ ${expenseDate}` : `Save Cost for ${expenseDate}`)}
+                  ? language === 'km'
+                    ? `ពិនិត្យទិន្នន័យត្រួតគ្នា (${expenseDate})`
+                    : `Review Duplicate for ${expenseDate}`
+                  : language === 'km'
+                    ? `រក្សាទុកចំណាយសម្រាប់ ${expenseDate}`
+                    : `Save Cost for ${expenseDate}`}
             </span>
           </button>
         </div>
@@ -817,8 +838,8 @@ export const DashboardScreen: React.FC = () => {
                   {language === 'km' ? 'កំណត់ត្រាដែលមានស្រាប់៖' : 'Existing Logged Record:'}
                 </span>
                 <div className="p-2 rounded-xl bg-[var(--surface-container-lowest)] text-[11px] font-bold text-[var(--on-surface)]">
-                  {t.foodPrep}: ${parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0).toFixed(2)} |{' '}
-                  {t.ingredientPantry}: ${parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0).toFixed(2)}
+                  {t.foodPrep}: {formatKHR(parseCurrency(existingCostForDate.food_price ?? existingCostForDate.foodPrice ?? 0))} |{' '}
+                  {t.ingredientPantry}: {formatKHR(parseCurrency(existingCostForDate.ingredient_price ?? existingCostForDate.ingredientPrice ?? 0))}
                 </div>
               </div>
               <div className="space-y-1 pt-1">
@@ -826,8 +847,8 @@ export const DashboardScreen: React.FC = () => {
                   {language === 'km' ? 'ទិន្នន័យថ្មីដែលត្រូវកត់ត្រា៖' : 'New Entry to Post:'}
                 </span>
                 <div className="p-2 rounded-xl bg-[var(--primary)]/10 text-[11px] font-bold text-[var(--primary)]">
-                  {t.foodPrep}: ${(parseFloat(foodPrice) || 0).toFixed(2)} |{' '}
-                  {t.ingredientPantry}: ${(parseFloat(ingredientPrice) || 0).toFixed(2)} ({t.total}: ${((parseFloat(foodPrice) || 0) + (parseFloat(ingredientPrice) || 0)).toFixed(2)})
+                  {t.foodPrep}: {formatKHR(parseFloat(foodPrice) || 0)} |{' '}
+                  {t.ingredientPantry}: {formatKHR(parseFloat(ingredientPrice) || 0)} ({t.total}: {formatKHR((parseFloat(foodPrice) || 0) + (parseFloat(ingredientPrice) || 0))})
                 </div>
               </div>
             </div>

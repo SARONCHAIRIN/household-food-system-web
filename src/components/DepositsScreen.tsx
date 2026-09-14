@@ -15,43 +15,57 @@ export const DepositsScreen: React.FC = () => {
     showToast,
   } = useApp();
 
-  // Admin Top-up State for POST /admin/deposits
+  // Multi-Currency Input State for POST /admin/deposits
   const [selectedUserId, setSelectedUserId] = useState<string>(
     currentUser?.id ? String(currentUser.id) : (members[0] ? String(members[0].id) : '14')
   );
-  const [amount, setAmount] = useState<string>('20.00');
+  const [amount, setAmount] = useState<string>('80000');
+  const [currency, setCurrency] = useState<'KHR' | 'USD'>('KHR');
+  const [exchangeRate, setExchangeRate] = useState<number>(4000);
   const [note, setNote] = useState<string>('Prepaid pantry top-up');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Derive my balance from GET /deposits/balance or allDeposits
-  const myBalance = depositBalance
+  const myBalanceKHR = depositBalance
     ? parseCurrency(depositBalance.balance)
     : allDeposits?.deposits?.find(
-        (d) => String(d.userId) === String(currentUser?.id)
-      )?.balance ?? 0;
+      (d) => String(d.userId) === String(currentUser?.id)
+    )?.balance ?? 0;
 
+  const myBalanceUSD = Number((myBalanceKHR / exchangeRate).toFixed(2));
   const myHistory = depositBalance?.history || [];
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
-      showToast(language === 'km' ? 'សូមបញ្ចូលចំនួនប្រាក់តម្កល់ត្រឹមត្រូវ' : 'Please enter a valid deposit amount', 'error');
+      showToast(
+        language === 'km' ? 'សូមបញ្ចូលចំនួនប្រាក់តម្កល់ត្រឹមត្រូវ' : 'Please enter a valid deposit amount',
+        'error'
+      );
       return;
     }
     const uid = parseInt(selectedUserId, 10);
     if (!uid) {
-      showToast(language === 'km' ? 'សូមជ្រើសរើសសមាជិកត្រឹមត្រូវ' : 'Please select a valid member', 'error');
+      showToast(
+        language === 'km' ? 'សូមជ្រើសរើសសមាជិកត្រឹមត្រូវ' : 'Please select a valid member',
+        'error'
+      );
       return;
     }
 
     setSubmitting(true);
     try {
-      await creditMemberDeposit(uid, numAmount, note.trim() || undefined);
-      setAmount('20.00');
+      // Pass currency and exchange rate to API client service helper
+      await creditMemberDeposit(uid, numAmount, currency, exchangeRate, note.trim() || undefined);
+      setAmount(currency === 'KHR' ? '80000' : '20.00');
       setNote('');
+      showToast(
+        language === 'km' ? 'បានបញ្ចូលប្រាក់តម្កល់ជោគជ័យ' : 'Deposit credited successfully',
+        'success'
+      );
     } catch {
-      // handled
+      // handled in context
     } finally {
       setSubmitting(false);
     }
@@ -77,15 +91,15 @@ export const DepositsScreen: React.FC = () => {
 
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold shadow-xs w-fit">
           <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
-          GET /deposits/balance
+          GET /api/v1/deposits/balance (KHR & USD)
         </span>
       </div>
 
-      {/* Responsive Side-by-Side Grid */}
+      {/* Responsive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Wallet Hero & Admin Top-up */}
+        {/* Left Column: Wallet Hero & Admin Multi-Currency Top-up */}
         <div className="lg:col-span-5 flex flex-col space-y-5">
-          {/* User Wallet Hero Card */}
+          {/* User Dual-Currency Wallet Hero Card */}
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004f35] via-[#006948] to-[#004f35] text-white p-5 shadow-lg border border-white/10">
             <div className="relative z-10 flex flex-col space-y-4">
               <div className="flex items-start justify-between">
@@ -103,20 +117,22 @@ export const DepositsScreen: React.FC = () => {
               </div>
 
               <div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-4xl font-extrabold text-white tracking-tight">
-                    {formatCurrency(myBalance)}
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                    {Math.round(myBalanceKHR).toLocaleString()} ៛
                   </span>
-                  <span className="text-xs font-bold text-[#9ff4ca]">{t.balance}</span>
+                  <span className="text-lg font-bold text-[#9ff4ca]">
+                    (${myBalanceUSD})
+                  </span>
                 </div>
                 <p className="text-xs text-[#9ff4ca]/80 mt-1">
-                  {t.activePrepaidBalance}
+                  {t.activePrepaidBalance} · Exchange Rate: 1 USD = {exchangeRate.toLocaleString()} KHR
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Admin Deposit Form (POST /admin/deposits) */}
+          {/* Admin Deposit Form (POST /admin/deposits with Currency Support) */}
           {userRole === 'ADMIN' ? (
             <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
               <div className="flex items-center gap-2.5">
@@ -128,12 +144,13 @@ export const DepositsScreen: React.FC = () => {
                     {t.creditMemberDeposit}
                   </h3>
                   <p className="text-[11px] text-[var(--on-surface-variant)]">
-                    POST /admin/deposits
+                    POST /api/v1/admin/deposits
                   </p>
                 </div>
               </div>
 
               <form onSubmit={handleDepositSubmit} className="space-y-3.5">
+                {/* Resident Member Selection */}
                 <div>
                   <label className="block text-xs font-semibold text-[var(--on-surface-variant)] mb-1">
                     {t.selectResidentMember}
@@ -151,38 +168,87 @@ export const DepositsScreen: React.FC = () => {
                   </select>
                 </div>
 
+                {/* Currency Switcher & Amount Input */}
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--on-surface-variant)] mb-1">
-                    {t.depositAmountUSD}
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-semibold text-[var(--on-surface-variant)]">
+                      Deposit Amount
+                    </label>
+
+                    {/* Currency Toggle */}
+                    <div className="flex bg-[var(--surface-container)] p-0.5 rounded-xl text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrency('KHR');
+                          setAmount('80000');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg transition-all ${currency === 'KHR'
+                            ? 'bg-[var(--primary)] text-white shadow-xs'
+                            : 'text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]'
+                          }`}
+                      >
+                        KHR (៛)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrency('USD');
+                          setAmount('20.00');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg transition-all ${currency === 'USD'
+                            ? 'bg-[var(--primary)] text-white shadow-xs'
+                            : 'text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]'
+                          }`}
+                      >
+                        USD ($)
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     type="number"
-                    step="1"
+                    step={currency === 'KHR' ? '500' : '1'}
                     min="1"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    placeholder="20.00"
+                    placeholder={currency === 'KHR' ? '80000' : '20.00'}
                     className="w-full min-h-[48px] px-3.5 rounded-2xl bg-[var(--surface-container)] text-xs font-bold text-[var(--on-surface)] outline-none"
                   />
-                  {/* Presets */}
+
+                  {/* Dynamic Presets depending on Currency */}
                   <div className="grid grid-cols-4 gap-2 mt-2">
-                    {['10', '20', '50', '100'].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setAmount(val)}
-                        className={`min-h-[40px] rounded-xl text-xs font-bold transition-all ${
-                          amount === val
-                            ? 'bg-[var(--primary)] text-white'
-                            : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-                        }`}
-                      >
-                        +${val}
-                      </button>
-                    ))}
+                    {currency === 'KHR'
+                      ? ['20000', '40000', '80000', '200000'].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setAmount(val)}
+                          className={`min-h-[40px] rounded-xl text-[11px] font-bold transition-all ${amount === val
+                              ? 'bg-[var(--primary)] text-white'
+                              : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
+                            }`}
+                        >
+                          +{(parseInt(val, 10) / 1000)}k ៛
+                        </button>
+                      ))
+                      : ['10', '20', '50', '100'].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setAmount(val)}
+                          className={`min-h-[40px] rounded-xl text-[11px] font-bold transition-all ${amount === val
+                              ? 'bg-[var(--primary)] text-white'
+                              : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
+                            }`}
+                        >
+                          +${val}
+                        </button>
+                      ))}
                   </div>
                 </div>
 
+                {/* Note */}
                 <div>
                   <label className="block text-xs font-semibold text-[var(--on-surface-variant)] mb-1">
                     {t.auditNoteOptional}
@@ -191,7 +257,7 @@ export const DepositsScreen: React.FC = () => {
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder={language === 'km' ? 'ផ្ទេរតាមធនាគារ / បង់សាច់ប្រាក់' : 'Bank transfer / cash deposit'}
+                    placeholder={language === 'km' ? 'ផ្ទេរតាម Bakong / វេរប្រាក់ / បង់សាច់ប្រាក់' : 'Bakong transfer / cash deposit'}
                     className="w-full min-h-[48px] px-3.5 rounded-2xl bg-[var(--surface-container)] text-xs text-[var(--on-surface)] outline-none"
                   />
                 </div>
@@ -217,7 +283,7 @@ export const DepositsScreen: React.FC = () => {
 
         {/* Right Column: All Member Balances & Personal History */}
         <div className="lg:col-span-7 flex flex-col space-y-5">
-          {/* All Member Balances (GET /admin/deposits/all) */}
+          {/* All Member Balances */}
           {userRole === 'ADMIN' && allDeposits && (
             <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
               <div className="flex items-center justify-between">
@@ -226,17 +292,23 @@ export const DepositsScreen: React.FC = () => {
                     {t.allHouseholdDeposits}
                   </h3>
                   <span className="text-xs text-[var(--on-surface-variant)]">
-                    GET /admin/deposits/all ({allDeposits.totalMembers ?? allDeposits.deposits?.length} {language === 'km' ? 'គណនី' : 'balances'})
+                    GET /api/v1/admin/deposits/all ({allDeposits.totalMembers ?? allDeposits.deposits?.length} {language === 'km' ? 'គណនី' : 'balances'})
                   </span>
                 </div>
-                <span className="text-xs font-extrabold text-[var(--primary)]">
-                  {t.total}: {formatCurrency(allDeposits.totalPoolBalance ?? 0)}
-                </span>
+                <div className="text-right">
+                  <span className="text-xs font-extrabold text-[var(--primary)] block">
+                    {t.total}: {Math.round(allDeposits.totalPoolBalance ?? 0).toLocaleString()} ៛
+                  </span>
+                  <span className="text-[10px] text-[var(--on-surface-variant)] font-bold">
+                    (${((allDeposits.totalPoolBalance ?? 0) / exchangeRate).toFixed(2)})
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {allDeposits.deposits?.map((dep) => {
-                  const bal = parseCurrency(dep.balance);
+                  const balKHR = parseCurrency(dep.balance);
+                  const balUSD = (balKHR / exchangeRate).toFixed(2);
                   const isCurrent = String(dep.userId) === String(currentUser?.id);
 
                   return (
@@ -259,15 +331,11 @@ export const DepositsScreen: React.FC = () => {
                       </div>
 
                       <div className="text-right flex-shrink-0 ml-2">
-                        <span className="font-extrabold text-sm text-[var(--on-surface)]">
-                          {formatCurrency(bal)}
+                        <span className="font-extrabold text-xs sm:text-sm text-[var(--on-surface)] block">
+                          {Math.round(balKHR).toLocaleString()} ៛
                         </span>
-                        <span
-                          className={`block text-[10px] font-bold ${
-                            bal >= 0 ? 'text-[var(--primary)]' : 'text-[var(--error)]'
-                          }`}
-                        >
-                          {bal >= 0 ? t.surplus : t.deficit}
+                        <span className="text-[10px] text-[var(--on-surface-variant)] font-semibold block">
+                          (${balUSD})
                         </span>
                       </div>
                     </div>
@@ -300,8 +368,9 @@ export const DepositsScreen: React.FC = () => {
             ) : (
               <div className="space-y-2.5">
                 {myHistory.map((h, i) => {
-                  const amt = parseCurrency(h.amount);
-                  const isTopup = h.type === 'TOP_UP' || amt >= 0;
+                  const amtKHR = parseCurrency(h.amount);
+                  const amtUSD = (amtKHR / exchangeRate).toFixed(2);
+                  const isTopup = h.type === 'TOP_UP' || h.type === 'DEPOSIT' || amtKHR >= 0;
 
                   return (
                     <div
@@ -310,11 +379,10 @@ export const DepositsScreen: React.FC = () => {
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
-                          className={`w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                            isTopup
+                          className={`w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${isTopup
                               ? 'bg-[var(--primary)]/15 text-[var(--primary)]'
                               : 'bg-[var(--error)]/15 text-[var(--error)]'
-                          }`}
+                            }`}
                         >
                           <span className="material-symbols-outlined text-[20px]">
                             {isTopup ? 'south_west' : 'north_east'}
@@ -332,15 +400,14 @@ export const DepositsScreen: React.FC = () => {
 
                       <div className="text-right flex-shrink-0 ml-2">
                         <span
-                          className={`font-extrabold text-sm ${
-                            isTopup ? 'text-[var(--primary)]' : 'text-[var(--error)]'
-                          }`}
+                          className={`font-extrabold text-xs sm:text-sm block ${isTopup ? 'text-[var(--primary)]' : 'text-[var(--error)]'
+                            }`}
                         >
                           {isTopup ? '+' : '-'}
-                          {formatCurrency(Math.abs(amt))}
+                          {Math.round(Math.abs(amtKHR)).toLocaleString()} ៛
                         </span>
-                        <span className="block text-[10px] text-[var(--on-surface-variant)]">
-                          {h.type}
+                        <span className="text-[10px] text-[var(--on-surface-variant)] font-semibold block">
+                          ({isTopup ? '+' : '-'}${Math.abs(Number(amtUSD)).toFixed(2)})
                         </span>
                       </div>
                     </div>

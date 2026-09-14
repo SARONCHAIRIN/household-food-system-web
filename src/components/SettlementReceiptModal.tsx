@@ -8,7 +8,6 @@ import {
   printPdf,
   sharePdf,
 } from '../services/settlementReportGenerator';
-import { formatCurrency } from '../services/apiClient';
 import { useApp } from '../context/AppContext';
 
 interface SettlementReceiptModalProps {
@@ -16,6 +15,21 @@ interface SettlementReceiptModalProps {
   onClose: () => void;
   receiptData: PostSettlementReceiptData | null;
 }
+
+const DEFAULT_EXCHANGE_RATE = 4000;
+
+/**
+ * Format helper for dual currency values (KHR primary, USD sub-display)
+ */
+const renderDual = (amountKHR: number, exchangeRate: number = DEFAULT_EXCHANGE_RATE) => {
+  const khr = Math.round(Number(amountKHR) || 0);
+  const usd = (khr / exchangeRate).toFixed(2);
+  return {
+    khr: `${khr.toLocaleString()} ៛`,
+    usd: `$${usd}`,
+    combined: `${khr.toLocaleString()} ៛ ($${usd})`,
+  };
+};
 
 export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
   isOpen,
@@ -101,14 +115,12 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
   const handleBatchDownloadAll = async () => {
     setBatchDownloading(true);
     try {
-      // 1. Download Master Receipt
       const masterDoc = buildMasterSettlementReceiptPdf(receiptData, language);
       downloadPdf(
         masterDoc,
         `00_household_master_settlement_receipt_ref${receiptData.receiptId}.pdf`
       );
 
-      // 2. Download each member's receipt with spacing
       for (let i = 0; i < receiptData.members.length; i++) {
         await new Promise((resolve) => setTimeout(resolve, 350));
         const m = receiptData.members[i];
@@ -130,9 +142,9 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
       <div className="relative w-full max-w-5xl bg-[var(--surface-container-lowest)] rounded-3xl shadow-2xl border border-[var(--outline)]/15 flex flex-col max-h-[92vh] overflow-hidden my-auto">
-        
+
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-[var(--outline)]/10 gap-3 bg-[var(--surface-container-low)]">
           <div className="flex items-center gap-3 min-w-0">
@@ -199,7 +211,7 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
           </div>
         </div>
 
-        {/* Action feedback toast */}
+        {/* Action Feedback Toast */}
         {actionMsg && (
           <div className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between transition-all">
             <span className="flex items-center gap-2">
@@ -217,11 +229,10 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('master')}
-            className={`min-h-[36px] px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-              activeTab === 'master'
+            className={`min-h-[36px] px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${activeTab === 'master'
                 ? 'bg-emerald-700 text-white shadow-xs'
                 : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-highest)]'
-            }`}
+              }`}
           >
             <span className="material-symbols-outlined text-[16px]">domain</span>
             {t.masterSummary} ({receiptData.members.length})
@@ -236,11 +247,10 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                 key={m.userId}
                 type="button"
                 onClick={() => setActiveTab(String(m.userId))}
-                className={`min-h-[36px] px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                  isTabActive
+                className={`min-h-[36px] px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${isTabActive
                     ? 'bg-emerald-700 text-white shadow-xs'
                     : 'bg-[var(--surface-container-low)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-highest)]'
-                }`}
+                  }`}
               >
                 <span>{m.name}</span>
                 {m.isPaidInFull ? (
@@ -271,8 +281,8 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                   </div>
                   <p className="text-emerald-800 dark:text-emerald-300">
                     {language === 'km'
-                      ? 'វិក្កយបត្រនេះកត់ត្រាសមតុល្យជាក់ស្តែងដែលបានកាត់ចេញដោយ POST /bills/settle ពេលទូទាត់។'
-                      : 'This receipt records the exact balances debited by POST /bills/settle at settlement execution time.'}
+                      ? 'វិក្កយបត្រនេះកត់ត្រាសមតុល្យជាក់ស្តែងជាប្រាក់រៀល (៛) និងដុល្លារ ($) ដែលបានកាត់ចេញដោយ POST /bills/settle។'
+                      : 'This receipt records exact balances debited in KHR (៛) and USD ($) by POST /bills/settle at execution time.'}
                   </p>
                 </div>
 
@@ -293,51 +303,50 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                 </button>
               </div>
 
-              {/* Master Totals Cards */}
+              {/* Master Totals Cards (Dual Currency) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* Total Amount Due */}
                 <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
                   <span className="text-[11px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
                     {t.amountDue} ({t.authoritative})
                   </span>
                   <span className="text-2xl font-extrabold text-[var(--primary)] block">
-                    {formatCurrency(receiptData.summary.totalDueAll)}
+                    {renderDual(receiptData.summary.totalDueAll).khr}
                   </span>
-                  <span className="text-[10px] text-[var(--on-surface-variant)]">
-                    {language === 'km' ? 'តម្លៃគណនាពេលទូទាត់' : 'Calculated charge at settlement time'}
+                  <span className="text-xs font-bold text-[var(--primary)] block">
+                    ({renderDual(receiptData.summary.totalDueAll).usd})
                   </span>
                 </div>
 
+                {/* Total Amount Deducted */}
                 <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                   <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
                     {t.totalAmountDeducted}
                   </span>
                   <span className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 block">
-                    {formatCurrency(receiptData.summary.totalDeductedAll)}
+                    {renderDual(receiptData.summary.totalDeductedAll).khr}
                   </span>
-                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300">
-                    {language === 'km' ? 'បានកាត់ចេញពីកាបូបប្រាក់កក់' : 'Successfully debited across member wallets'}
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block">
+                    ({renderDual(receiptData.summary.totalDeductedAll).usd})
                   </span>
                 </div>
 
-                <div className={`p-4 rounded-2xl border space-y-1 ${
-                  receiptData.summary.totalRemainingOwedAll > 0
+                {/* Outstanding Balance */}
+                <div className={`p-4 rounded-2xl border space-y-1 ${receiptData.summary.totalRemainingOwedAll > 0
                     ? 'bg-red-500/10 border-red-500/20'
                     : 'bg-emerald-500/10 border-emerald-500/20'
-                }`}>
-                  <span className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'
                   }`}>
+                  <span className={`text-[11px] font-bold uppercase tracking-wider block ${receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'
+                    }`}>
                     {t.outstandingBalance}
                   </span>
-                  <span className={`text-2xl font-extrabold block ${
-                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
-                  }`}>
-                    {formatCurrency(receiptData.summary.totalRemainingOwedAll)}
+                  <span className={`text-2xl font-extrabold block ${receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
+                    }`}>
+                    {renderDual(receiptData.summary.totalRemainingOwedAll).khr}
                   </span>
-                  <span className={`text-[10px] ${
-                    receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'
-                  }`}>
-                    {receiptData.summary.fullyPaidCount} / {receiptData.summary.totalMembers} {t.fullyPaidMembers}
+                  <span className={`text-xs font-bold block ${receiptData.summary.totalRemainingOwedAll > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
+                    }`}>
+                    ({renderDual(receiptData.summary.totalRemainingOwedAll).usd})
                   </span>
                 </div>
               </div>
@@ -346,10 +355,10 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-[var(--on-surface)] uppercase tracking-wider">
-                    {language === 'km' ? 'បញ្ជីប្រតិបត្តិការសមាជិក' : 'Member Execution Ledger'}
+                    {language === 'km' ? 'បញ្ជីប្រតិបត្តិការសមាជិក (ប្រាក់រៀល និងដុល្លារ)' : 'Member Execution Ledger (KHR & USD)'}
                   </h4>
                   <span className="text-xs text-[var(--on-surface-variant)]">
-                    POST /bills/settle
+                    POST /api/v1/bills/settle
                   </span>
                 </div>
 
@@ -359,7 +368,7 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                       <tr>
                         <th className="p-3">UID</th>
                         <th className="p-3">{t.members}</th>
-                        <th className="p-3 text-right">{t.amountDue}</th>
+                        <th className="p-3 text-right">{t.amountDue} (KHR / USD)</th>
                         <th className="p-3 text-right">{t.depositBefore}</th>
                         <th className="p-3 text-right">{t.amountDeducted}</th>
                         <th className="p-3 text-right">{t.depositAfter}</th>
@@ -368,47 +377,58 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--outline)]/10 text-[var(--on-surface)]">
-                      {receiptData.members.map((m) => (
-                        <tr key={m.userId} className="hover:bg-[var(--surface-container-low)]">
-                          <td className="p-3 font-mono text-[var(--on-surface-variant)]">#{m.userId}</td>
-                          <td className="p-3 font-bold">{m.name}</td>
-                          <td className="p-3 text-right font-bold text-[var(--primary)]">
-                            {formatCurrency(m.totalDue)}
-                          </td>
-                          <td className="p-3 text-right text-[var(--on-surface-variant)]">
-                            {formatCurrency(m.previousDepositBalance)}
-                          </td>
-                          <td className="p-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                            -{formatCurrency(m.deductedAmount)}
-                          </td>
-                          <td className="p-3 text-right font-mono font-semibold">
-                            {formatCurrency(m.depositAfter)}
-                          </td>
-                          <td className="p-3 text-center">
-                            {m.isPaidInFull ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold">
-                                <span className="material-symbols-outlined text-[13px]">check</span>
-                                Paid in Full
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-700 dark:text-red-400 text-[11px] font-bold">
-                                <span className="material-symbols-outlined text-[13px]">warning</span>
-                                Partial — Owed: {formatCurrency(m.remainingOwed)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setActiveTab(String(m.userId))}
-                              className="px-2.5 py-1 rounded-lg bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--primary)] text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">receipt</span>
-                              {language === 'km' ? 'មើល' : 'View'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {receiptData.members.map((m) => {
+                        const dueDual = renderDual(m.totalDue);
+                        const prevDual = renderDual(m.previousDepositBalance);
+                        const dedDual = renderDual(m.deductedAmount);
+                        const afterDual = renderDual(m.depositAfter);
+
+                        return (
+                          <tr key={m.userId} className="hover:bg-[var(--surface-container-low)]">
+                            <td className="p-3 font-mono text-[var(--on-surface-variant)]">#{m.userId}</td>
+                            <td className="p-3 font-bold">{m.name}</td>
+                            <td className="p-3 text-right">
+                              <span className="font-bold text-[var(--primary)] block">{dueDual.khr}</span>
+                              <span className="text-[10px] text-gray-500 block">({dueDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="font-semibold block">{prevDual.khr}</span>
+                              <span className="text-[10px] text-gray-500 block">({prevDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block">-{dedDual.khr}</span>
+                              <span className="text-[10px] text-emerald-700 block">(-{dedDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="font-mono font-semibold block">{afterDual.khr}</span>
+                              <span className="text-[10px] text-gray-500 block">({afterDual.usd})</span>
+                            </td>
+                            <td className="p-3 text-center">
+                              {m.isPaidInFull ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold">
+                                  <span className="material-symbols-outlined text-[13px]">check</span>
+                                  Paid in Full
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-700 dark:text-red-400 text-[11px] font-bold">
+                                  <span className="material-symbols-outlined text-[13px]">warning</span>
+                                  Partial — Owed: {renderDual(m.remainingOwed).khr}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab(String(m.userId))}
+                                className="px-2.5 py-1 rounded-lg bg-[var(--surface-container)] hover:bg-[var(--surface-container-high)] text-[var(--primary)] text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">receipt</span>
+                                {language === 'km' ? 'មើល' : 'View'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot className="bg-[var(--surface-container-low)] font-bold text-[var(--on-surface)]">
                       <tr>
@@ -416,17 +436,19 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                           {t.total} ({receiptData.members.length} {t.members})
                         </td>
                         <td className="p-3 text-right text-[var(--primary)]">
-                          {formatCurrency(receiptData.summary.totalDueAll)}
+                          <span className="block">{renderDual(receiptData.summary.totalDueAll).khr}</span>
+                          <span className="text-[10px] font-normal text-gray-500">({renderDual(receiptData.summary.totalDueAll).usd})</span>
                         </td>
                         <td className="p-3 text-right text-[var(--on-surface-variant)]">-</td>
                         <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">
-                          -{formatCurrency(receiptData.summary.totalDeductedAll)}
+                          <span className="block">-{renderDual(receiptData.summary.totalDeductedAll).khr}</span>
+                          <span className="text-[10px] font-normal text-emerald-700">(-{renderDual(receiptData.summary.totalDeductedAll).usd})</span>
                         </td>
                         <td className="p-3 text-right">-</td>
                         <td colSpan={2} className="p-3 text-center text-xs">
                           {receiptData.summary.totalRemainingOwedAll > 0 ? (
-                            <span className="text-red-600 font-bold">
-                              {t.outstandingBalance}: {formatCurrency(receiptData.summary.totalRemainingOwedAll)}
+                            <span className="text-red-600 font-bold block">
+                              {t.outstandingBalance}: {renderDual(receiptData.summary.totalRemainingOwedAll).combined}
                             </span>
                           ) : (
                             <span className="text-emerald-600 font-bold">{t.fullyPaidMembers}</span>
@@ -439,9 +461,9 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
               </div>
             </div>
           ) : selectedMember ? (
-            /* INDIVIDUAL MEMBER RECEIPT VIEW */
+            /* INDIVIDUAL MEMBER RECEIPT VIEW (Dual Currency) */
             <div className="space-y-6 animate-in fade-in duration-150">
-              {/* Member Status Card */}
+              {/* Member Status Banner */}
               {selectedMember.isPaidInFull ? (
                 <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 space-y-1">
                   <div className="flex items-center gap-2">
@@ -454,8 +476,8 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                   </div>
                   <p className="text-xs text-emerald-800 dark:text-emerald-300">
                     {language === 'km'
-                      ? `ចំនួនទឹកប្រាក់ដែលត្រូវទូទាត់ ${formatCurrency(selectedMember.totalDue)} ត្រូវបានកាត់ចេញទាំងស្រុងពីប្រាក់កក់របស់ ${selectedMember.name}។`
-                      : `The authoritative settlement charge of ${formatCurrency(selectedMember.totalDue)} has been successfully deducted in full from ${selectedMember.name}'s prepaid deposit wallet.`}
+                      ? `ចំនួនទឹកប្រាក់ដែលត្រូវទូទាត់ ${renderDual(selectedMember.totalDue).combined} ត្រូវបានកាត់ចេញទាំងស្រុងពីប្រាក់កក់របស់ ${selectedMember.name}។`
+                      : `The settlement charge of ${renderDual(selectedMember.totalDue).combined} has been deducted in full from ${selectedMember.name}'s deposit wallet.`}
                   </p>
                 </div>
               ) : (
@@ -465,70 +487,72 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                       warning
                     </span>
                     <span className="font-extrabold text-red-900 dark:text-red-200 text-sm">
-                      {t.statusLabel}: {t.partialBalance} — {t.remainingOwed}: {formatCurrency(selectedMember.remainingOwed)}
+                      {t.statusLabel}: {t.partialBalance} — {t.remainingOwed}: {renderDual(selectedMember.remainingOwed).combined}
                     </span>
                   </div>
                   <p className="text-xs text-red-800 dark:text-red-300">
                     {language === 'km'
-                      ? `ប្រាក់កក់មុន (${formatCurrency(selectedMember.previousDepositBalance)}) មិនគ្រប់គ្រាន់សម្រាប់ទូទាត់ថ្លៃត្រូវបង់ (${formatCurrency(selectedMember.totalDue)})។ បានកាត់ ${formatCurrency(selectedMember.deductedAmount)} និងនៅជំពាក់ ${formatCurrency(selectedMember.remainingOwed)}។`
-                      : `The member's previous balance (${formatCurrency(selectedMember.previousDepositBalance)}) was insufficient to cover the authoritative amount due (${formatCurrency(selectedMember.totalDue)}). Only ${formatCurrency(selectedMember.deductedAmount)} was deducted, leaving an outstanding balance of ${formatCurrency(selectedMember.remainingOwed)}.`}
+                      ? `ប្រាក់កក់មុន (${renderDual(selectedMember.previousDepositBalance).combined}) មិនគ្រប់គ្រាន់សម្រាប់ទូទាត់ថ្លៃត្រូវបង់ (${renderDual(selectedMember.totalDue).combined})។ បានកាត់ ${renderDual(selectedMember.deductedAmount).combined} និងនៅជំពាក់ ${renderDual(selectedMember.remainingOwed).combined}។`
+                      : `Previous balance (${renderDual(selectedMember.previousDepositBalance).combined}) was insufficient for ${renderDual(selectedMember.totalDue).combined}. Deducted ${renderDual(selectedMember.deductedAmount).combined}, leaving ${renderDual(selectedMember.remainingOwed).combined} owed.`}
                   </p>
                 </div>
               )}
 
-              {/* 4 Financial Metrics */}
+              {/* 4 Financial Metric Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Amount Due */}
                 <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
                   <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
                     {t.amountDue}
                   </span>
                   <span className="text-xl font-extrabold text-[var(--primary)] block">
-                    {formatCurrency(selectedMember.totalDue)}
+                    {renderDual(selectedMember.totalDue).khr}
                   </span>
-                  <span className="text-[10px] text-[var(--on-surface-variant)]">
-                    {t.authoritative}
+                  <span className="text-xs font-bold text-[var(--primary)] block">
+                    ({renderDual(selectedMember.totalDue).usd})
                   </span>
                 </div>
 
+                {/* Deposit Before */}
                 <div className="p-4 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 space-y-1">
                   <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
                     {t.depositBefore}
                   </span>
                   <span className="text-xl font-extrabold text-[var(--on-surface)] block">
-                    {formatCurrency(selectedMember.previousDepositBalance)}
+                    {renderDual(selectedMember.previousDepositBalance).khr}
                   </span>
-                  <span className="text-[10px] text-[var(--on-surface-variant)]">
-                    {language === 'km' ? 'មុនពេលទូទាត់' : 'Pre-settle wallet balance'}
+                  <span className="text-xs font-bold text-[var(--on-surface-variant)] block">
+                    ({renderDual(selectedMember.previousDepositBalance).usd})
                   </span>
                 </div>
 
+                {/* Amount Deducted */}
                 <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                   <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
                     {t.amountDeducted}
                   </span>
                   <span className="text-xl font-extrabold text-emerald-700 dark:text-emerald-400 block">
-                    -{formatCurrency(selectedMember.deductedAmount)}
+                    -{renderDual(selectedMember.deductedAmount).khr}
                   </span>
-                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300">
-                    {language === 'km' ? 'បានកាត់ក្នុងវដ្តនេះ' : 'Debited this cycle'}
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block">
+                    (-{renderDual(selectedMember.deductedAmount).usd})
                   </span>
                 </div>
 
-                <div className={`p-4 rounded-2xl border space-y-1 ${
-                  selectedMember.depositAfter < 0
+                {/* Deposit After */}
+                <div className={`p-4 rounded-2xl border space-y-1 ${selectedMember.depositAfter < 0
                     ? 'bg-red-500/10 border-red-500/20'
                     : 'bg-[var(--surface-container-low)] border-[var(--outline)]/10'
-                }`}>
+                  }`}>
                   <span className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block">
                     {t.depositAfter}
                   </span>
-                  <span className={`text-xl font-extrabold block ${
-                    selectedMember.depositAfter < 0 ? 'text-red-600' : 'text-[var(--on-surface)]'
-                  }`}>
-                    {formatCurrency(selectedMember.depositAfter)}
+                  <span className={`text-xl font-extrabold block ${selectedMember.depositAfter < 0 ? 'text-red-600' : 'text-[var(--on-surface)]'
+                    }`}>
+                    {renderDual(selectedMember.depositAfter).khr}
                   </span>
-                  <span className="text-[10px] text-[var(--on-surface-variant)]">
-                    {t.depositBefore} - {t.amountDeducted}
+                  <span className="text-xs font-bold text-[var(--on-surface-variant)] block">
+                    ({renderDual(selectedMember.depositAfter).usd})
                   </span>
                 </div>
               </div>
@@ -536,7 +560,7 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
               {/* Detailed Ledger Breakdown */}
               <div className="rounded-2xl border border-[var(--outline)]/15 overflow-hidden">
                 <div className="bg-[#004f35] text-white p-3 font-bold text-xs">
-                  {language === 'km' ? 'សៀវភៅប្រតិបត្តិការទូទាត់' : 'Settlement Transaction Ledger'} (POST /bills/settle)
+                  {language === 'km' ? 'សៀវភៅប្រតិបត្តិការទូទាត់' : 'Settlement Transaction Ledger'} (POST /api/v1/bills/settle)
                 </div>
                 <div className="p-4 space-y-3 text-xs bg-[var(--surface-container-lowest)]">
                   <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
@@ -546,9 +570,14 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                         {receiptData.period.startDate} - {receiptData.period.endDate}
                       </span>
                     </div>
-                    <span className="font-extrabold text-base text-[var(--primary)]">
-                      {formatCurrency(selectedMember.totalDue)}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-extrabold text-base text-[var(--primary)] block">
+                        {renderDual(selectedMember.totalDue).khr}
+                      </span>
+                      <span className="text-xs text-[var(--primary)] font-semibold block">
+                        ({renderDual(selectedMember.totalDue).usd})
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
@@ -558,9 +587,14 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                         {language === 'km' ? 'សមតុល្យប្រាក់កក់មុនកាត់' : 'Wallet balance prior to execution'}
                       </span>
                     </div>
-                    <span className="font-bold text-sm text-[var(--on-surface)]">
-                      {formatCurrency(selectedMember.previousDepositBalance)}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-sm text-[var(--on-surface)] block">
+                        {renderDual(selectedMember.previousDepositBalance).khr}
+                      </span>
+                      <span className="text-xs text-[var(--on-surface-variant)] font-semibold block">
+                        ({renderDual(selectedMember.previousDepositBalance).usd})
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
@@ -570,21 +604,31 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                         {language === 'km' ? 'បានកាត់ចេញពីកាបូបប្រាក់កក់' : 'Debited from deposit wallet'}
                       </span>
                     </div>
-                    <span className="font-extrabold text-base text-emerald-600 dark:text-emerald-400">
-                      -{formatCurrency(selectedMember.deductedAmount)}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-extrabold text-base text-emerald-600 dark:text-emerald-400 block">
+                        -{renderDual(selectedMember.deductedAmount).khr}
+                      </span>
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold block">
+                        (-{renderDual(selectedMember.deductedAmount).usd})
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pb-2 border-b border-[var(--outline)]/10">
                     <div>
                       <span className="font-bold text-[var(--on-surface)] block">{t.depositAfter}</span>
                       <span className="text-[11px] text-[var(--on-surface-variant)]">
-                        {formatCurrency(selectedMember.previousDepositBalance)} - {formatCurrency(selectedMember.deductedAmount)}
+                        {renderDual(selectedMember.previousDepositBalance).khr} - {renderDual(selectedMember.deductedAmount).khr}
                       </span>
                     </div>
-                    <span className="font-mono font-bold text-sm text-[var(--on-surface)]">
-                      {formatCurrency(selectedMember.depositAfter)}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-sm text-[var(--on-surface)] block">
+                        {renderDual(selectedMember.depositAfter).khr}
+                      </span>
+                      <span className="text-xs text-[var(--on-surface-variant)] font-semibold block">
+                        ({renderDual(selectedMember.depositAfter).usd})
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
@@ -603,7 +647,7 @@ export const SettlementReceiptModal: React.FC<SettlementReceiptModalProps> = ({
                       ) : (
                         <span className="px-3 py-1 rounded-full bg-red-500/15 text-red-700 dark:text-red-400 text-xs font-bold inline-flex items-center gap-1">
                           <span className="material-symbols-outlined text-[14px]">error</span>
-                          {t.remainingOwed}: {formatCurrency(selectedMember.remainingOwed)}
+                          {t.remainingOwed}: {renderDual(selectedMember.remainingOwed).combined}
                         </span>
                       )}
                     </div>

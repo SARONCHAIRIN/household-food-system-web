@@ -18,6 +18,20 @@ import {
 import { SettlementReportModal } from './SettlementReportModal';
 import { SettlementReceiptModal } from './SettlementReceiptModal';
 
+const DEFAULT_EXCHANGE_RATE = 4000;
+
+/**
+ * Format helper to render dual currency values (KHR ៛ and USD $)
+ */
+const renderDualCurrency = (amountKHR: number, exchangeRate: number = DEFAULT_EXCHANGE_RATE) => {
+  const khr = Math.round(amountKHR);
+  const usd = (khr / exchangeRate).toFixed(2);
+  return {
+    khrFormatted: `${khr.toLocaleString()} ៛`,
+    usdFormatted: `$${usd}`,
+  };
+};
+
 export const BillsScreen: React.FC = () => {
   const {
     currentUser,
@@ -40,7 +54,7 @@ export const BillsScreen: React.FC = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [acknowledgeDoubleCharge, setAcknowledgeDoubleCharge] = useState(false);
 
-  // Authoritative Post-Settlement Receipt State (frozen strictly from POST /bills/settle response)
+  // Authoritative Post-Settlement Receipt State
   const [postSettlementReceipt, setPostSettlementReceipt] = useState<PostSettlementReceiptData | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
@@ -149,15 +163,14 @@ export const BillsScreen: React.FC = () => {
     setGenerationProgress('Fetching bills summary, meal records, and daily costs in parallel...');
 
     try {
-      // 1. Fetch bills summary, meal statuses, and daily costs concurrently
       const [summaryRes, mealRes, costsRes] = await Promise.all([
         api.getBillsSummary(startDate, endDate),
         api.getMealStatuses(),
         api.getDailyCosts(),
       ]);
 
-      const poolFood = parseCurrency(summaryRes.poolSummary?.totalFoodPrice ?? 0);
-      const poolIngr = parseCurrency(summaryRes.poolSummary?.totalIngredientPrice ?? 0);
+      const poolFood = parseCurrency(summaryRes.poolSummary?.totalFoodCostKHR ?? summaryRes.poolSummary?.totalFoodPrice ?? 0);
+      const poolIngr = parseCurrency(summaryRes.poolSummary?.totalIngredientCostKHR ?? summaryRes.poolSummary?.totalIngredientPrice ?? 0);
       const totalPool = poolFood + poolIngr;
 
       const memberSummaries = summaryRes.memberSummaries || [];
@@ -166,7 +179,6 @@ export const BillsScreen: React.FC = () => {
         timeStyle: 'short',
       });
 
-      // 2. Fetch deposits/balance for each member in memberSummaries
       const memberBalancesMap: Record<string, number> = {};
       const assembledMemberReports: MemberReportData[] = [];
 
@@ -191,7 +203,6 @@ export const BillsScreen: React.FC = () => {
 
         memberBalancesMap[String(mem.memberId)] = parseCurrency(depBalanceRes.balance);
 
-        // Filter client-side meal statuses for this member within the date range
         const memberMealsRaw = mealRes.filter((m) => {
           const mId = m.memberId || m.member_id;
           if (String(mId) !== String(mem.memberId)) return false;
@@ -199,7 +210,6 @@ export const BillsScreen: React.FC = () => {
           return d >= startDate && d <= endDate;
         });
 
-        // Compute daily share breakdown for each meal record
         const itemizedMeals: MemberMealItem[] = memberMealsRaw.map((m) => {
           const d = m.date.split('T')[0];
           const matchedCost = costsRes.find((c) => c.date.startsWith(d));
@@ -208,7 +218,6 @@ export const BillsScreen: React.FC = () => {
             matchedCost?.ingredient_price ?? matchedCost?.ingredientPrice ?? 0
           );
 
-          // Count diners who ate on that day
           const dayEaters = mealRes.filter(
             (s) => s.date.startsWith(d) && s.status === 'EAT'
           ).length;
@@ -225,7 +234,6 @@ export const BillsScreen: React.FC = () => {
           };
         });
 
-        // Find associated member details
         const matchedUser = members.find((u) => String(u.id) === String(mem.memberId));
 
         assembledMemberReports.push({
@@ -265,7 +273,6 @@ export const BillsScreen: React.FC = () => {
         generatedAt,
       };
 
-      // Store in session cache
       reportCacheRef.current[cacheKey] = {
         combined,
         members: assembledMemberReports,
@@ -288,7 +295,6 @@ export const BillsScreen: React.FC = () => {
     setShowConfirmModal(false);
     setSettling(true);
 
-    // Capture submit timestamp and current admin at action time
     const submitTime = new Date().toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -301,27 +307,24 @@ export const BillsScreen: React.FC = () => {
 
     try {
       const res = await settleCycleBills(startDate, endDate);
-      // Invalidate pre-settle report cache after actual settlement
       reportCacheRef.current = {};
       showToast('Settlement and deposit deductions executed successfully', 'success');
 
       if (res && res.results && res.results.length > 0) {
-        // Fetch reference ID from GET /bills/last-settlement
         const freshLast = await api.getLastSettlement().catch(() => null);
         const receiptId = freshLast?.id || lastSettlement?.id || Date.now();
 
         const userMap = new Map<string, string>();
         members.forEach((u) => userMap.set(String(u.id), u.username || ''));
 
-        // Normalize strictly from POST /bills/settle actual results
         const receiptMembers = res.results.map((r) =>
           createMemberReceiptItem({
             userId: r.userId,
             name: r.name,
             username: userMap.get(String(r.userId)),
-            totalDue: r.totalDue,
-            previousDepositBalance: r.previousDepositBalance,
-            deductedAmount: r.deductedAmount,
+            totalDue: r.totalDueKHR ?? r.totalDue,
+            previousDepositBalance: r.previousDepositBalanceKHR ?? r.previousDepositBalance,
+            deductedAmount: r.deductedAmountKHR ?? r.deductedAmount,
             settlementStatus: r.settlementStatus,
           })
         );
@@ -351,7 +354,6 @@ export const BillsScreen: React.FC = () => {
           },
         };
 
-        // Frozen in place immediately - never recalculated from live /bills/summary
         setPostSettlementReceipt(frozenReceiptData);
         setIsReceiptModalOpen(true);
       }
@@ -379,9 +381,9 @@ export const BillsScreen: React.FC = () => {
         userId: r.userId,
         name: r.name,
         username: userMap.get(String(r.userId)),
-        totalDue: r.totalDue,
-        previousDepositBalance: r.previousDepositBalance,
-        deductedAmount: r.deductedAmount,
+        totalDue: r.totalDueKHR ?? r.totalDue,
+        previousDepositBalance: r.previousDepositBalanceKHR ?? r.previousDepositBalance,
+        deductedAmount: r.deductedAmountKHR ?? r.deductedAmount,
         settlementStatus: r.settlementStatus,
       })
     );
@@ -415,7 +417,6 @@ export const BillsScreen: React.FC = () => {
     setIsReceiptModalOpen(true);
   };
 
-  // Fail-safe if non-admin somehow mounts
   if (userRole !== 'ADMIN') {
     return (
       <div className="w-full flex flex-col items-center justify-center p-8 text-center space-y-3 pb-28 min-[600px]:pb-8">
@@ -426,24 +427,28 @@ export const BillsScreen: React.FC = () => {
           Admin Access Required
         </h2>
         <p className="text-xs text-[var(--on-surface-variant)] max-w-sm leading-relaxed">
-          The bills and settlement endpoints (<code className="bg-black/5 px-1 py-0.5 rounded">/bills/summary</code>, <code className="bg-black/5 px-1 py-0.5 rounded">/bills/settle</code>) are protected and only accessible to household users with the <strong className="text-[var(--primary)] font-bold">ADMIN</strong> role.
+          The bills and settlement endpoints (<code className="bg-black/5 px-1 py-0.5 rounded">/api/v1/bills/summary</code>, <code className="bg-black/5 px-1 py-0.5 rounded">/api/v1/bills/settle</code>) are protected and only accessible to users with the <strong className="text-[var(--primary)] font-bold">ADMIN</strong> role.
         </p>
       </div>
     );
   }
 
-  // Derive pool numbers from billsSummary
-  const poolFood = parseCurrency(billsSummary?.poolSummary?.totalFoodPrice ?? 0);
-  const poolIngredient = parseCurrency(billsSummary?.poolSummary?.totalIngredientPrice ?? 0);
+  // Multi-Currency Pool Numbers
+  const poolFoodKHR = parseCurrency(billsSummary?.poolSummary?.totalFoodCostKHR ?? billsSummary?.poolSummary?.totalFoodPrice ?? 0);
+  const poolIngredientKHR = parseCurrency(billsSummary?.poolSummary?.totalIngredientCostKHR ?? billsSummary?.poolSummary?.totalIngredientPrice ?? 0);
   const memberSummaries = billsSummary?.memberSummaries || [];
-  const sumOfMemberDues = memberSummaries.reduce(
-    (acc, m) => acc + parseCurrency(m.totalDue),
+  const sumOfMemberDuesKHR = memberSummaries.reduce(
+    (acc, m) => acc + parseCurrency(m.totalDueKHR ?? m.totalDue),
     0
   );
-  // Guarantee preview total matches sum of all per-member totals shown
-  const poolTotal = memberSummaries.length > 0
-    ? sumOfMemberDues
-    : (poolFood + poolIngredient);
+
+  const poolTotalKHR = memberSummaries.length > 0
+    ? sumOfMemberDuesKHR
+    : (poolFoodKHR + poolIngredientKHR);
+
+  const poolFoodDual = renderDualCurrency(poolFoodKHR);
+  const poolIngredientDual = renderDualCurrency(poolIngredientKHR);
+  const poolTotalDual = renderDualCurrency(poolTotalKHR);
 
   return (
     <div className="w-full flex flex-col space-y-6 pb-28 min-[600px]:pb-8">
@@ -459,21 +464,21 @@ export const BillsScreen: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[var(--on-surface-variant)]">
-            Active cycle cost breakdown, pre-settlement PDF reports & balance deduction
+            Active cycle cost breakdown in KHR (៛) & USD ($), PDF reports & deposit deduction
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold shadow-xs">
             <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
-            LIVE BILLING API
+            LIVE BILLING API (KHR / USD)
           </span>
         </div>
       </div>
 
-      {/* Responsive Side-by-Side Grid */}
+      {/* Responsive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Date Presets, Date Range Controls & Actions */}
+        {/* Left Column: Date Range & Actions */}
         <div className="lg:col-span-5 flex flex-col space-y-5">
           {/* Date Range & Preset Picker */}
           <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
@@ -510,11 +515,10 @@ export const BillsScreen: React.FC = () => {
                     key={p.id}
                     type="button"
                     onClick={() => applyPreset(p.id as DatePreset)}
-                    className={`min-h-[40px] px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${
-                      isSelected
-                        ? 'bg-[var(--primary)] text-white shadow-xs'
-                        : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
-                    }`}
+                    className={`min-h-[40px] px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${isSelected
+                      ? 'bg-[var(--primary)] text-white shadow-xs'
+                      : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]'
+                      }`}
                   >
                     {p.label}
                   </button>
@@ -557,7 +561,7 @@ export const BillsScreen: React.FC = () => {
             )}
           </div>
 
-          {/* Cycle Summary & Actions Card */}
+          {/* Cycle Dual-Currency Summary Card */}
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004f35] via-[#006948] to-[#004f35] text-white p-5 shadow-lg border border-white/10">
             <div className="relative z-10 flex flex-col space-y-4">
               <div className="flex items-start justify-between">
@@ -589,25 +593,24 @@ export const BillsScreen: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-4xl font-extrabold text-white tracking-tight">
-                        {formatCurrency(poolTotal)}
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                        {poolTotalDual.khrFormatted}
                       </span>
-                      <span className="text-[11px] font-bold tracking-wider text-[#9ff4ca]">
-                        PERIOD COST (RECALCULATED)
+                      <span className="text-lg font-bold text-[#9ff4ca]">
+                        ({poolTotalDual.usdFormatted})
                       </span>
                     </div>
                     <p className="text-xs text-[#9ff4ca]/90 mt-1">
-                      Food: {formatCurrency(poolFood)} | Ingredients: {formatCurrency(poolIngredient)}
+                      Food: {poolFoodDual.khrFormatted} (${(poolFoodKHR / DEFAULT_EXCHANGE_RATE).toFixed(2)}) | Ingredients: {poolIngredientDual.khrFormatted} (${(poolIngredientKHR / DEFAULT_EXCHANGE_RATE).toFixed(2)})
                     </p>
                     <p className="text-[11px] text-[#9ff4ca]/75 italic mt-0.5">
-                      This is the raw cost for the period — it does not subtract prior settlements
+                      Raw period cost in KHR & USD — 1 USD = {DEFAULT_EXCHANGE_RATE.toLocaleString()} KHR
                     </p>
                   </>
                 )}
               </div>
 
-              {/* Progress Bar during Report Compilation */}
               {generatingReport && (
                 <div className="p-3.5 rounded-2xl bg-white/10 border border-white/20 space-y-2 text-xs">
                   <div className="flex items-center justify-between text-[#9ff4ca]">
@@ -622,9 +625,8 @@ export const BillsScreen: React.FC = () => {
                 </div>
               )}
 
-              {/* TWO-STEP WORKFLOW: 1. Generate Report (PDF) -> 2. Settle & Deduct */}
+              {/* Action Buttons */}
               <div className="flex flex-col space-y-2.5 pt-2">
-                {/* POST-SETTLE RECEIPT: Instant Save Settlement Report (PDF) from actual POST /bills/settle response */}
                 {postSettlementReceipt && (
                   <div className="p-3.5 rounded-2xl bg-emerald-400/25 border border-emerald-300/40 text-white space-y-2 animate-in fade-in duration-200">
                     <div className="flex items-center justify-between">
@@ -659,7 +661,6 @@ export const BillsScreen: React.FC = () => {
                   </div>
                 )}
 
-                {/* STEP 1: Preview Settlement Statements (PDF) - Before-you-pay estimate */}
                 <button
                   type="button"
                   onClick={handleGenerateReport}
@@ -676,7 +677,6 @@ export const BillsScreen: React.FC = () => {
                   </span>
                 </button>
 
-                {/* OVERLAP WARNING BANNER & CONFIRMATION CHECKBOX */}
                 {hasOverlap && primaryOverlap && (
                   <div className="p-3.5 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-100 text-xs space-y-2.5 animate-fadeIn">
                     <div className="flex items-start gap-2">
@@ -690,15 +690,9 @@ export const BillsScreen: React.FC = () => {
                         <p className="text-amber-100 text-[11px] leading-relaxed">
                           Part or all of this period ({primaryOverlap.overlapPeriodFormatted}) was already settled on {primaryOverlap.settledDate} by {primaryOverlap.settledByName} (Settlement #{primaryOverlap.id}). Settling again will deduct these amounts a second time.
                         </p>
-                        {overlapResult.overlappingSettlements.length > 1 && (
-                          <p className="text-amber-200/90 text-[10px] italic">
-                            (+{overlapResult.overlappingSettlements.length - 1} other previous settlements overlap this range)
-                          </p>
-                        )}
                       </div>
                     </div>
 
-                    {/* Explicit Confirmation Checkbox before Settle button becomes tappable */}
                     <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-black/30 border border-amber-400/35 cursor-pointer text-xs select-none hover:bg-black/40 transition-colors">
                       <input
                         type="checkbox"
@@ -713,7 +707,6 @@ export const BillsScreen: React.FC = () => {
                   </div>
                 )}
 
-                {/* STEP 2: Settle & Deduct (Requires acknowledgment if overlapping) */}
                 <button
                   type="button"
                   onClick={() => setShowConfirmModal(true)}
@@ -724,11 +717,10 @@ export const BillsScreen: React.FC = () => {
                     isRangeInvalid ||
                     (hasOverlap && !acknowledgeDoubleCharge)
                   }
-                  className={`w-full min-h-[48px] rounded-full font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 ${
-                    hasOverlap
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                      : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)] text-white'
-                  }`}
+                  className={`w-full min-h-[48px] rounded-full font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 ${hasOverlap
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)] text-white'
+                    }`}
                 >
                   {settling ? (
                     <span className="material-symbols-outlined text-[20px] animate-spin">sync</span>
@@ -741,22 +733,22 @@ export const BillsScreen: React.FC = () => {
                     {settling
                       ? 'Executing POST /bills/settle...'
                       : hasOverlap
-                      ? 'Settle & Deduct Deposits (Duplicate Warning)'
-                      : 'Settle & Deduct Deposits'}
+                        ? 'Settle & Deduct Deposits (Duplicate Warning)'
+                        : 'Settle & Deduct Deposits'}
                   </span>
                 </button>
               </div>
 
               <span className="text-[11px] text-[#9ff4ca]/70 text-center block pt-1">
-                Notice: Settling submits the exact range {startDate} to {endDate} to POST /bills/settle.
+                Notice: Settles period {startDate} to {endDate} via POST /api/v1/bills/settle.
               </span>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Member Cost Breakdown + Last Settlement Record + Settlement History */}
+        {/* Right Column: Multi-Currency Breakdown & Settlement History */}
         <div className="lg:col-span-7 flex flex-col space-y-5">
-          {/* Member Cost Breakdown (strictly from GET /bills/summary) */}
+          {/* Member Cost Breakdown (Dual Currency KHR & USD) */}
           <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
@@ -764,7 +756,7 @@ export const BillsScreen: React.FC = () => {
                   Per-Member Cost Breakdown
                 </h3>
                 <span className="text-xs text-[var(--on-surface-variant)]">
-                  This is the raw cost for the period — it does not subtract prior settlements
+                  Multi-Currency breakdown (KHR ៛ & USD $)
                 </span>
               </div>
               <span className="px-3 py-1 rounded-full bg-[var(--surface-container)] text-[var(--on-surface)] text-xs font-bold">
@@ -786,13 +778,15 @@ export const BillsScreen: React.FC = () => {
             ) : (
               <div className="space-y-2.5">
                 {memberSummaries.map((m) => {
-                  const due = parseCurrency(m.totalDue);
-                  const food = parseCurrency(m.foodCost);
-                  const ingr = parseCurrency(m.ingredientCost);
+                  const dueKHR = parseCurrency(m.totalDueKHR ?? m.totalDue);
+                  const dueUSD = m.totalDueUSD ?? (dueKHR / DEFAULT_EXCHANGE_RATE).toFixed(2);
+                  const foodKHR = parseCurrency(m.foodCostKHR ?? m.foodCost);
+                  const ingrKHR = parseCurrency(m.ingredientCostKHR ?? m.ingredientCost);
+
                   const isMemberAlreadySettled =
                     hasOverlap &&
                     (m.daysEaten > 0 ||
-                      due > 0 ||
+                      dueKHR > 0 ||
                       Boolean(
                         lastSettlement?.results?.some(
                           (r) => String(r.userId) === String(m.memberId)
@@ -821,38 +815,43 @@ export const BillsScreen: React.FC = () => {
                             )}
                           </div>
                           <span className="text-[11px] text-[var(--on-surface-variant)] truncate">
-                            @{m.username} · {m.daysEaten} days eaten · Food ${food.toFixed(2)} + Ingr ${ingr.toFixed(2)}
+                            @{m.username} · {m.daysEaten} days eaten · Food: {Math.round(foodKHR).toLocaleString()} ៛ + Ingr: {Math.round(ingrKHR).toLocaleString()} ៛
                           </span>
                         </div>
                       </div>
 
                       <div className="text-right flex-shrink-0 ml-2">
-                        <span className="font-extrabold text-base text-[var(--on-surface)]">
-                          {formatCurrency(due)}
+                        <span className="font-extrabold text-sm sm:text-base text-[var(--on-surface)] block">
+                          {Math.round(dueKHR).toLocaleString()} ៛
                         </span>
                         <span className="block text-[10px] font-bold text-[var(--primary)]">
-                          Period Cost (recalculated)
+                          (${dueUSD})
                         </span>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Verification row: Sum of member period costs matches preview total */}
+                {/* Verification Row */}
                 <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-xs font-bold mt-2">
                   <div className="flex items-center gap-2 text-[var(--primary)]">
                     <span className="material-symbols-outlined text-[18px]">functions</span>
-                    <span>Sum of {memberSummaries.length} member period costs (matches Preview Total)</span>
+                    <span>Sum of {memberSummaries.length} member period costs</span>
                   </div>
-                  <span className="text-base text-[var(--primary)]">
-                    {formatCurrency(poolTotal)}
-                  </span>
+                  <div className="text-right">
+                    <span className="text-sm sm:text-base text-[var(--primary)] font-extrabold block">
+                      {poolTotalDual.khrFormatted}
+                    </span>
+                    <span className="text-[10px] text-[var(--primary)] font-semibold block">
+                      ({poolTotalDual.usdFormatted})
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Last Settlement Record (strictly from GET /bills/last-settlement) */}
+          {/* Last Settlement Record */}
           {lastSettlement && (
             <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
               <div className="flex items-center justify-between">
@@ -861,7 +860,7 @@ export const BillsScreen: React.FC = () => {
                     Last Settlement Record
                   </h3>
                   <span className="text-xs text-[var(--on-surface-variant)]">
-                    GET /bills/last-settlement (ID #{lastSettlement.id})
+                    GET /api/v1/bills/last-settlement (ID #{lastSettlement.id})
                   </span>
                 </div>
                 <span className="px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-bold">
@@ -876,21 +875,19 @@ export const BillsScreen: React.FC = () => {
                     {formatHumanRange(lastSettlement.start_date, lastSettlement.end_date)} ({lastSettlement.start_date} to {lastSettlement.end_date})
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-baseline">
                   <span className="text-[var(--on-surface-variant)]">Total Due All:</span>
-                  <span className="font-bold text-sm text-[var(--on-surface)]">
-                    {formatCurrency(lastSettlement.total_due_all)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--on-surface-variant)]">Food / Ingredients:</span>
-                  <span className="font-semibold text-[var(--on-surface)]">
-                    {formatCurrency(lastSettlement.total_food_cost)} / {formatCurrency(lastSettlement.total_ingredient_cost)}
-                  </span>
+                  <div className="text-right">
+                    <span className="font-bold text-sm text-[var(--on-surface)] block">
+                      {Math.round(parseCurrency(lastSettlement.total_due_all)).toLocaleString()} ៛
+                    </span>
+                    <span className="text-[10px] text-[var(--on-surface-variant)] font-semibold block">
+                      (${((parseCurrency(lastSettlement.total_due_all)) / DEFAULT_EXCHANGE_RATE).toFixed(2)})
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Results per member */}
               {lastSettlement.results && lastSettlement.results.length > 0 && (
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-between">
@@ -907,31 +904,36 @@ export const BillsScreen: React.FC = () => {
                     </button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {lastSettlement.results.map((res, i) => (
-                      <div
-                        key={res.userId || i}
-                        className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-container)] text-xs"
-                      >
-                        <span className="font-semibold text-[var(--on-surface)] truncate mr-2">
-                          {res.name} (UID #{res.userId})
-                        </span>
-                        <div className="text-right flex-shrink-0">
-                          <span className="font-bold text-[var(--on-surface)]">
-                            Due: {formatCurrency(res.totalDue)}
+                    {lastSettlement.results.map((res, i) => {
+                      const dueKHR = parseCurrency(res.totalDueKHR ?? res.totalDue);
+                      const deductedKHR = parseCurrency(res.deductedAmountKHR ?? res.deductedAmount);
+
+                      return (
+                        <div
+                          key={res.userId || i}
+                          className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-container)] text-xs"
+                        >
+                          <span className="font-semibold text-[var(--on-surface)] truncate mr-2">
+                            {res.name} (UID #{res.userId})
                           </span>
-                          <span className="block text-[10px] text-[var(--on-surface-variant)]">
-                            Deducted: {formatCurrency(res.deductedAmount)}
-                          </span>
+                          <div className="text-right flex-shrink-0">
+                            <span className="font-bold text-[var(--on-surface)] block">
+                              Due: {Math.round(dueKHR).toLocaleString()} ៛
+                            </span>
+                            <span className="block text-[10px] text-[var(--on-surface-variant)] font-semibold">
+                              Deducted: {Math.round(deductedKHR).toLocaleString()} ៛
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Historical Settlements (strictly from GET /bills/settlements) */}
+          {/* Historical Settlements */}
           {settlementHistory && (
             <div className="rounded-3xl bg-[var(--surface-container-lowest)] p-5 shadow-sm border border-[var(--outline)]/10 space-y-4">
               <div className="flex items-center justify-between">
@@ -940,43 +942,48 @@ export const BillsScreen: React.FC = () => {
                     Settlement History
                   </h3>
                   <span className="text-xs text-[var(--on-surface-variant)]">
-                    GET /bills/settlements ({settlementHistory.total} logged)
+                    GET /api/v1/bills/settlements ({settlementHistory.total} logged)
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                {settlementHistory.settlements.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 text-xs"
-                  >
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-sm text-[var(--on-surface)] truncate">
-                        Cycle: {formatHumanRange(item.start_date, item.end_date)} ({item.start_date} ~ {item.end_date})
-                      </span>
-                      <span className="text-[11px] text-[var(--on-surface-variant)]">
-                        By {item.settled_by_name || 'Admin'} · ID #{item.id}
-                      </span>
-                    </div>
+                {settlementHistory.settlements.map((item) => {
+                  const dueKHR = parseCurrency(item.total_due_all ?? item.totalDueAll);
+                  const dueUSD = (dueKHR / DEFAULT_EXCHANGE_RATE).toFixed(2);
 
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <span className="font-extrabold text-sm text-[var(--on-surface)]">
-                        {formatCurrency(item.total_due_all)}
-                      </span>
-                      <span className="block text-[10px] text-[var(--primary)] font-bold">
-                        Settled
-                      </span>
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--surface-container-low)] border border-[var(--outline)]/10 text-xs"
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-sm text-[var(--on-surface)] truncate">
+                          Cycle: {formatHumanRange(item.start_date, item.end_date)} ({item.start_date} ~ {item.end_date})
+                        </span>
+                        <span className="text-[11px] text-[var(--on-surface-variant)]">
+                          By {item.settled_by_name || 'Admin'} · ID #{item.id}
+                        </span>
+                      </div>
+
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <span className="font-extrabold text-sm text-[var(--on-surface)] block">
+                          {Math.round(dueKHR).toLocaleString()} ៛
+                        </span>
+                        <span className="block text-[10px] text-[var(--primary)] font-bold">
+                          (${dueUSD})
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* IN-APP SETTLEMENT STATEMENT PDF REPORT PREVIEW MODAL */}
+      {/* MODALS */}
       <SettlementReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
@@ -987,14 +994,12 @@ export const BillsScreen: React.FC = () => {
         onProceedToSettle={() => setShowConfirmModal(true)}
       />
 
-      {/* AUTHORITATIVE POST-SETTLEMENT TRANSACTION RECEIPT MODAL (POST /bills/settle) */}
       <SettlementReceiptModal
         isOpen={isReceiptModalOpen}
         onClose={() => setIsReceiptModalOpen(false)}
         receiptData={postSettlementReceipt}
       />
 
-      {/* SETTLE & DEDUCT CONFIRMATION DIALOG */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[var(--surface-container-lowest)] rounded-3xl p-6 shadow-2xl border border-[var(--outline)]/15 space-y-4">
@@ -1007,12 +1012,11 @@ export const BillsScreen: React.FC = () => {
                   {hasOverlap ? 'Confirm Duplicate Settlement' : 'Confirm Cycle Settlement'}
                 </h3>
                 <span className="text-xs text-[var(--on-surface-variant)]">
-                  POST /bills/settle
+                  POST /api/v1/bills/settle
                 </span>
               </div>
             </div>
 
-            {/* Warning banner inside modal if overlapping */}
             {hasOverlap && primaryOverlap && (
               <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs space-y-1.5 text-amber-800 dark:text-amber-300">
                 <div className="flex items-center gap-1.5 font-extrabold text-amber-700 dark:text-amber-200">
@@ -1032,21 +1036,17 @@ export const BillsScreen: React.FC = () => {
                   {formatHumanRange(startDate, endDate)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--on-surface-variant)]">Exact Date Span:</span>
-                <span className="font-semibold text-[var(--on-surface)]">
-                  {startDate} to {endDate}
-                </span>
-              </div>
               <div className="flex justify-between items-baseline">
-                <span className="text-[var(--on-surface-variant)]">Period Cost (recalculated):</span>
-                <span className="font-bold text-base text-[var(--primary)]">
-                  {formatCurrency(poolTotal)}
-                </span>
+                <span className="text-[var(--on-surface-variant)]">Period Cost:</span>
+                <div className="text-right">
+                  <span className="font-bold text-base text-[var(--primary)] block">
+                    {poolTotalDual.khrFormatted}
+                  </span>
+                  <span className="text-[10px] text-[var(--primary)] font-semibold block">
+                    ({poolTotalDual.usdFormatted})
+                  </span>
+                </div>
               </div>
-              <p className="text-[10px] text-[var(--on-surface-variant)]/80 italic -mt-1">
-                This is the raw cost for the period — it does not subtract prior settlements
-              </p>
               <div className="flex justify-between">
                 <span className="text-[var(--on-surface-variant)]">Residents Affected:</span>
                 <span className="font-bold text-[var(--on-surface)]">
@@ -1054,10 +1054,6 @@ export const BillsScreen: React.FC = () => {
                 </span>
               </div>
             </div>
-
-            <p className="text-xs text-[var(--on-surface-variant)] leading-relaxed">
-              You are about to settle <strong className="text-[var(--on-surface)] font-bold">{formatHumanRange(startDate, endDate)}</strong> ({startDate} to {endDate}) totaling <strong className="text-[var(--primary)] font-bold">{formatCurrency(poolTotal)}</strong> across <strong className="text-[var(--on-surface)] font-bold">{memberSummaries.length} members</strong>. This action will permanently deduct each member&apos;s calculated share from their prepaid deposit wallet according to the billing statement.{hasOverlap ? ' You previously acknowledged that this period overlaps a prior settlement and may double-charge members.' : ' Are you sure you wish to proceed?'}
-            </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
@@ -1072,11 +1068,10 @@ export const BillsScreen: React.FC = () => {
                 type="button"
                 onClick={handleConfirmSettle}
                 disabled={settling}
-                className={`min-h-[48px] px-5 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 ${
-                  hasOverlap
-                    ? 'bg-amber-600 hover:bg-amber-700'
-                    : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
-                }`}
+                className={`min-h-[48px] px-5 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 ${hasOverlap
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-[var(--secondary)] hover:bg-[var(--secondary-container)]'
+                  }`}
               >
                 {settling ? (
                   <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
