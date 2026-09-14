@@ -6,7 +6,7 @@ import {
   ApiUser,
   TransactionRecord,
 } from '../types/api';
-import { formatCurrency, parseCurrency } from './apiClient';
+import { parseCurrency } from './apiClient';
 
 export interface MemberMealItem {
   date: string;
@@ -33,6 +33,18 @@ export interface MemberReportData {
   };
   generatedAt: string;
 }
+
+const DEFAULT_EXCHANGE_RATE = 4000;
+
+export const formatDualCurrency = (
+  amountVal: number | string,
+  exchangeRate: number = DEFAULT_EXCHANGE_RATE
+): string => {
+  const numericVal = typeof amountVal === 'number' ? amountVal : parseFloat(String(amountVal)) || 0;
+  const khr = Math.round(numericVal);
+  const usd = (khr / exchangeRate).toFixed(2);
+  return `${khr.toLocaleString()} ៛ ($${usd})`;
+};
 
 export interface CombinedReportData {
   period: {
@@ -104,7 +116,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   let currentY = 16;
 
   // --- 1. HEADER & BRAND ---
-  // Top brand bar
   doc.setFillColor(...BRAND_PRIMARY);
   doc.rect(14, currentY, 12, 12, 'F');
   doc.setTextColor(255, 255, 255);
@@ -112,7 +123,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.setFontSize(10);
   doc.text('HF', 20, currentY + 7.5, { align: 'center' });
 
-  // Title & Household Name
   doc.setTextColor(...BRAND_PRIMARY);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
@@ -123,7 +133,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.setTextColor(...TEXT_MUTED);
   doc.text(labels.systemSubtitle, 30, currentY + 11);
 
-  // Statement badge on right
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -142,18 +151,16 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
 
   currentY += 21;
 
-  // Horizontal divider
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
   doc.line(14, currentY, pageWidth - 14, currentY);
   currentY += 6;
 
-  // --- 2. MEMBER INFO & HOUSEHOLD POOL SUMMARY (Side by side) ---
+  // --- 2. MEMBER INFO & HOUSEHOLD POOL SUMMARY ---
   const memberBoxX = 14;
   const memberBoxWidth = (pageWidth - 34) / 2;
   const poolBoxX = memberBoxX + memberBoxWidth + 6;
 
-  // Member Info Card
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(memberBoxX, currentY, memberBoxWidth, 28, 3, 3, 'F');
   doc.setFont('helvetica', 'bold');
@@ -168,7 +175,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.text(`Username: @${data.member.username} (ID #${data.member.memberId})`, memberBoxX + 4, currentY + 17);
   doc.text(`Role: ${data.user?.role || 'MEMBER'}  |  Status: ${data.member.status || 'ACTIVE'}`, memberBoxX + 4, currentY + 22);
 
-  // Household Pool Summary Card (Context)
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(poolBoxX, currentY, memberBoxWidth, 28, 3, 3, 'F');
   doc.setFont('helvetica', 'bold');
@@ -179,19 +185,19 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...TEXT_DARK);
-  doc.text(`Total Food Cost: ${formatCurrency(data.poolSummary.totalFoodPrice)}`, poolBoxX + 4, currentY + 12);
-  doc.text(`Total Pantry Ingredients: ${formatCurrency(data.poolSummary.totalIngredientPrice)}`, poolBoxX + 4, currentY + 17);
-  doc.text(`Total Shared Pool: ${formatCurrency(data.poolSummary.totalPool)} (${data.poolSummary.activeMembersCount} Active)`, poolBoxX + 4, currentY + 22);
+  doc.text(`Total Food Cost: ${formatDualCurrency(data.poolSummary.totalFoodPrice)}`, poolBoxX + 4, currentY + 12);
+  doc.text(`Total Pantry Ingredients: ${formatDualCurrency(data.poolSummary.totalIngredientPrice)}`, poolBoxX + 4, currentY + 17);
+  doc.text(`Total Shared Pool: ${formatDualCurrency(data.poolSummary.totalPool)} (${data.poolSummary.activeMembersCount} Active)`, poolBoxX + 4, currentY + 22);
 
   currentY += 34;
 
-  // --- 3. TOTAL DUE BOX (Strictly from API memberSummaries) ---
+  // --- 3. TOTAL DUE BOX ---
   const totalDueVal = parseCurrency(data.member.totalDue);
   const foodCostVal = parseCurrency(data.member.foodCost);
   const ingredientCostVal = parseCurrency(data.member.ingredientCost);
   const currentDepositBal = parseCurrency(data.depositBalance.balance);
 
-  doc.setFillColor(240, 253, 244); // light green
+  doc.setFillColor(240, 253, 244);
   doc.setDrawColor(187, 247, 208);
   doc.roundedRect(14, currentY, pageWidth - 28, 22, 3, 3, 'FD');
 
@@ -201,23 +207,23 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.text('PAYMENT SUMMARY (FROM GET /bills/summary)', 20, currentY + 7);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_DARK);
   doc.text(
-    `Food Cost: ${formatCurrency(foodCostVal)}  +  Ingredient Cost: ${formatCurrency(ingredientCostVal)}  =  Total Due`,
+    `Food Cost: ${formatDualCurrency(foodCostVal)}  +  Ingredient: ${formatDualCurrency(ingredientCostVal)}`,
     20,
     currentY + 14
   );
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(12);
   doc.setTextColor(...BRAND_PRIMARY);
-  doc.text(formatCurrency(totalDueVal), pageWidth - 20, currentY + 13, { align: 'right' });
+  doc.text(formatDualCurrency(totalDueVal), pageWidth - 20, currentY + 12, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
-  doc.text(`Current Deposit Wallet: ${formatCurrency(currentDepositBal)}`, pageWidth - 20, currentY + 18, { align: 'right' });
+  doc.text(`Current Deposit Wallet: ${formatDualCurrency(currentDepositBal)}`, pageWidth - 20, currentY + 17, { align: 'right' });
 
   currentY += 28;
 
@@ -231,8 +237,8 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   const mealRows = data.meals.map((m) => [
     m.date,
     m.status,
-    m.foodCost > 0 ? formatCurrency(m.foodCost) : '$0.00',
-    m.ingredientCost > 0 ? formatCurrency(m.ingredientCost) : '$0.00',
+    m.foodCost > 0 ? formatDualCurrency(m.foodCost) : '0 ៛ ($0.00)',
+    m.ingredientCost > 0 ? formatDualCurrency(m.ingredientCost) : '0 ៛ ($0.00)',
   ]);
 
   const totalDaysEaten = data.meals.filter((m) => m.status === 'EAT').length;
@@ -241,14 +247,14 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
 
   autoTable(doc, {
     startY: currentY,
-    head: [['Date', 'Attendance Status', 'Food Share ($)', 'Ingredient Share ($)']],
+    head: [['Date', 'Attendance Status', 'Food Share', 'Ingredient Share']],
     body: mealRows.length > 0 ? mealRows : [['No meal records in this period', '-', '-', '-']],
     foot: [
       [
         `Total Days Eaten: ${totalDaysEaten}`,
         '',
-        formatCurrency(sumFood > 0 ? sumFood : foodCostVal),
-        formatCurrency(sumIngr > 0 ? sumIngr : ingredientCostVal),
+        formatDualCurrency(sumFood > 0 ? sumFood : foodCostVal),
+        formatDualCurrency(sumIngr > 0 ? sumIngr : ingredientCostVal),
       ],
     ],
     theme: 'grid',
@@ -262,10 +268,10 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
       fillColor: BG_LIGHT,
       textColor: BRAND_PRIMARY,
       fontStyle: 'bold',
-      fontSize: 8.5,
+      fontSize: 8,
     },
     bodyStyles: {
-      fontSize: 8,
+      fontSize: 7.5,
       textColor: TEXT_DARK,
     },
     margin: { left: 14, right: 14 },
@@ -274,13 +280,12 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
     },
   });
 
-  // Ensure currentY is updated after the table
   const lastTableY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
   if (lastTableY) {
     currentY = lastTableY + 8;
   }
 
-  // --- 5. DEPOSIT WALLET TRANSACTION HISTORY (if on current page or new page) ---
+  // --- 5. DEPOSIT WALLET TRANSACTION HISTORY ---
   if (currentY > 230) {
     doc.addPage();
     currentY = 20;
@@ -295,7 +300,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   const historyItems: TransactionRecord[] =
     data.depositBalance.history || data.depositBalance.transactions || [];
 
-  // Filter transactions within the date range if dates exist
   const relevantTxns = historyItems.filter((tx) => {
     const dStr = tx.created_at || tx.createdAt;
     if (!dStr) return true;
@@ -311,9 +315,9 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
     return [
       date,
       tx.type,
-      formatCurrency(Math.abs(amt)),
+      formatDualCurrency(Math.abs(amt)),
       tx.note || (tx.type === 'DEPOSIT' ? 'Prepaid Deposit' : 'Deduction'),
-      tx.balance_after !== undefined ? formatCurrency(parseCurrency(tx.balance_after)) : '-',
+      tx.balance_after !== undefined ? formatDualCurrency(parseCurrency(tx.balance_after)) : '-',
     ];
   });
 
@@ -326,13 +330,13 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
         : [['No transaction records in period', '-', '-', '-', '-']],
     theme: 'grid',
     headStyles: {
-      fillColor: [71, 85, 105], // slate
+      fillColor: [71, 85, 105],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 8.5,
     },
     bodyStyles: {
-      fontSize: 8,
+      fontSize: 7.5,
       textColor: TEXT_DARK,
     },
     margin: { left: 14, right: 14 },
@@ -349,12 +353,11 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
     currentY = 20;
   }
 
-  // Calculate settlement deadline (7 days from period end or custom)
   const deadlineDate = new Date(data.period.endDate);
   deadlineDate.setDate(deadlineDate.getDate() + 5);
   const deadlineStr = deadlineDate.toISOString().split('T')[0];
 
-  doc.setFillColor(254, 242, 242); // light red/warm
+  doc.setFillColor(254, 242, 242);
   doc.setDrawColor(254, 202, 202);
   doc.roundedRect(14, currentY, pageWidth - 28, 26, 3, 3, 'FD');
 
@@ -364,10 +367,10 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
   doc.text('PAYMENT INSTRUCTIONS & NOTICES', 20, currentY + 6);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_DARK);
   doc.text(
-    `• Please ensure an active balance of at least ${formatCurrency(totalDueVal)} by ${deadlineStr}.`,
+    `• Please ensure an active balance of at least ${formatDualCurrency(totalDueVal)} by ${deadlineStr}.`,
     20,
     currentY + 12
   );
@@ -382,7 +385,6 @@ export function buildMemberSettlementPdf(data: MemberReportData, lang: 'en' | 'k
     currentY + 22
   );
 
-  // Footer page numbering
   const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -414,7 +416,6 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
   const pageWidth = doc.internal.pageSize.getWidth();
   let currentY = 16;
 
-  // Brand header
   doc.setFillColor(...BRAND_PRIMARY);
   doc.rect(14, currentY, 12, 12, 'F');
   doc.setTextColor(255, 255, 255);
@@ -450,48 +451,45 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
 
   currentY += 21;
 
-  // Divider
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
   doc.line(14, currentY, pageWidth - 14, currentY);
   currentY += 6;
 
-  // Pool Context Cards (3 columns)
   const colWidth = (pageWidth - 28 - 8) / 3;
 
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(14, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('FOOD EXPENSES', 18, currentY + 6);
-  doc.setFontSize(14);
+  doc.setFontSize(10);
   doc.setTextColor(...BRAND_PRIMARY);
-  doc.text(formatCurrency(data.poolSummary.totalFoodPrice), 18, currentY + 16);
+  doc.text(formatDualCurrency(data.poolSummary.totalFoodPrice), 18, currentY + 15);
 
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(14 + colWidth + 4, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('PANTRY INGREDIENTS', 18 + colWidth + 4, currentY + 6);
-  doc.setFontSize(14);
+  doc.setFontSize(10);
   doc.setTextColor(...BRAND_PRIMARY);
-  doc.text(formatCurrency(data.poolSummary.totalIngredientPrice), 18 + colWidth + 4, currentY + 16);
+  doc.text(formatDualCurrency(data.poolSummary.totalIngredientPrice), 18 + colWidth + 4, currentY + 15);
 
   doc.setFillColor(240, 253, 244);
   doc.roundedRect(14 + (colWidth + 4) * 2, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('TOTAL POOL DUE', 18 + (colWidth + 4) * 2, currentY + 6);
-  doc.setFontSize(14);
+  doc.setFontSize(10);
   doc.setTextColor(...BRAND_PRIMARY);
-  doc.text(formatCurrency(data.poolSummary.totalPool), 18 + (colWidth + 4) * 2, currentY + 16);
+  doc.text(formatDualCurrency(data.poolSummary.totalPool), 18 + (colWidth + 4) * 2, currentY + 15);
 
   currentY += 28;
 
-  // Member Summary Table
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -509,10 +507,10 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
       m.name,
       `@${m.username}`,
       String(m.daysEaten),
-      formatCurrency(food),
-      formatCurrency(ingr),
-      formatCurrency(due),
-      formatCurrency(bal),
+      formatDualCurrency(food),
+      formatDualCurrency(ingr),
+      formatDualCurrency(due),
+      formatDualCurrency(bal),
       bal >= due ? 'Covered' : 'Needs Top-up',
     ];
   });
@@ -525,7 +523,7 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
   autoTable(doc, {
     startY: currentY,
     head: [
-      ['ID', 'Name', 'Username', 'Days', 'Food ($)', 'Ingr ($)', 'Total Due', 'Current Bal', 'Status'],
+      ['ID', 'Name', 'Username', 'Days', 'Food', 'Ingr', 'Total Due', 'Current Bal', 'Status'],
     ],
     body: rows,
     foot: [
@@ -534,9 +532,9 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
         `${data.memberSummaries.length} members`,
         '',
         '',
-        formatCurrency(data.poolSummary.totalFoodPrice),
-        formatCurrency(data.poolSummary.totalIngredientPrice),
-        formatCurrency(totalDueSum),
+        formatDualCurrency(data.poolSummary.totalFoodPrice),
+        formatDualCurrency(data.poolSummary.totalIngredientPrice),
+        formatDualCurrency(totalDueSum),
         '',
         '',
       ],
@@ -552,16 +550,15 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
       fillColor: BG_LIGHT,
       textColor: BRAND_PRIMARY,
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7.5,
     },
     bodyStyles: {
-      fontSize: 7.5,
+      fontSize: 7,
       textColor: TEXT_DARK,
     },
     margin: { left: 14, right: 14 },
   });
 
-  // Footer page numbering
   const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -579,16 +576,10 @@ export function buildCombinedHouseholdPdf(data: CombinedReportData, lang: 'en' |
   return doc;
 }
 
-/**
- * Downloads a generated jsPDF document directly to the client's file system.
- */
 export function downloadPdf(doc: jsPDF, filename: string): void {
   doc.save(filename);
 }
 
-/**
- * Opens a print dialog for the generated jsPDF document.
- */
 export function printPdf(doc: jsPDF): void {
   const blob = doc.output('blob');
   const blobUrl = URL.createObjectURL(blob);
@@ -608,9 +599,6 @@ export function printPdf(doc: jsPDF): void {
   };
 }
 
-/**
- * Shares the PDF using the Web Share API when supported, falling back to direct download.
- */
 export async function sharePdf(doc: jsPDF, filename: string, title: string): Promise<boolean> {
   const blob = doc.output('blob');
   const file = new File([blob], filename, { type: 'application/pdf' });
@@ -630,7 +618,6 @@ export async function sharePdf(doc: jsPDF, filename: string, title: string): Pro
       return false;
     }
   } else {
-    // Fallback: download directly
     downloadPdf(doc, filename);
     return false;
   }
@@ -643,8 +630,8 @@ export interface PostSettlementMemberResult {
   totalDue: number;
   previousDepositBalance: number;
   deductedAmount: number;
-  depositAfter: number; // computed directly: previousDepositBalance - deductedAmount
-  remainingOwed: number; // computed directly: totalDue - deductedAmount
+  depositAfter: number;
+  remainingOwed: number;
   settlementStatus: string;
   statusLabel: string;
   isPaidInFull: boolean;
@@ -657,7 +644,7 @@ export interface PostSettlementReceiptData {
     endDate: string;
   };
   settledByName: string;
-  settledAt: string; // client-side timestamp at submit time
+  settledAt: string;
   members: PostSettlementMemberResult[];
   summary: {
     totalDueAll: number;
@@ -669,11 +656,6 @@ export interface PostSettlementReceiptData {
   };
 }
 
-/**
- * Creates a normalized PostSettlementMemberResult from raw POST /bills/settle member fields.
- * Computes depositAfter directly from (previousDepositBalance - deductedAmount).
- * Computes remainingOwed directly from (totalDue - deductedAmount).
- */
 export function createMemberReceiptItem(raw: {
   userId: string | number;
   name: string;
@@ -687,7 +669,6 @@ export function createMemberReceiptItem(raw: {
   const previousDepositBalance = parseCurrency(raw.previousDepositBalance);
   const deductedAmount = parseCurrency(raw.deductedAmount);
 
-  // Directly computed fields (no separate re-fetch to avoid race conditions)
   const depositAfter = Math.round((previousDepositBalance - deductedAmount) * 100) / 100;
   const remainingOwed = Math.max(0, Math.round((totalDue - deductedAmount) * 100) / 100);
 
@@ -699,7 +680,7 @@ export function createMemberReceiptItem(raw: {
 
   const statusLabel = isPaidInFull
     ? 'Paid in Full'
-    : `Partial / Insufficient Balance — Remaining Owed: ${formatCurrency(remainingOwed)}`;
+    : `Partial / Insufficient Balance — Remaining Owed: ${formatDualCurrency(remainingOwed)}`;
 
   return {
     userId: raw.userId,
@@ -718,7 +699,6 @@ export function createMemberReceiptItem(raw: {
 
 /**
  * Builds a single-member official Settlement Receipt PDF.
- * This is an authoritative, completed transaction record created from POST /bills/settle.
  */
 export function buildMemberSettlementReceiptPdf(
   receiptData: PostSettlementReceiptData,
@@ -735,8 +715,6 @@ export function buildMemberSettlementReceiptPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   let currentY = 16;
 
-  // --- 1. HEADER & BRAND ---
-  // Top brand bar
   doc.setFillColor(...BRAND_PRIMARY);
   doc.rect(14, currentY, 12, 12, 'F');
   doc.setTextColor(255, 255, 255);
@@ -744,7 +722,6 @@ export function buildMemberSettlementReceiptPdf(
   doc.setFontSize(10);
   doc.text('HF', 20, currentY + 7.5, { align: 'center' });
 
-  // Title & Subtitle
   doc.setTextColor(...BRAND_PRIMARY);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
@@ -755,7 +732,6 @@ export function buildMemberSettlementReceiptPdf(
   doc.setTextColor(...TEXT_MUTED);
   doc.text(labels.completedRecord, 30, currentY + 11);
 
-  // Settlement Receipt Header on Right
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -773,18 +749,15 @@ export function buildMemberSettlementReceiptPdf(
 
   currentY += 21;
 
-  // Horizontal divider
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
   doc.line(14, currentY, pageWidth - 14, currentY);
   currentY += 6;
 
-  // --- 2. METADATA CARDS (Side by side) ---
   const boxWidth = (pageWidth - 34) / 2;
   const leftX = 14;
   const rightX = leftX + boxWidth + 6;
 
-  // Member Information
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(leftX, currentY, boxWidth, 26, 3, 3, 'F');
   doc.setFont('helvetica', 'bold');
@@ -799,7 +772,6 @@ export function buildMemberSettlementReceiptPdf(
   doc.text(`User ID: #${member.userId}${member.username ? ` (@${member.username})` : ''}`, leftX + 4, currentY + 17);
   doc.text('Account Type: Resident Member Wallet', leftX + 4, currentY + 22);
 
-  // Settlement Transaction Metadata
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(rightX, currentY, boxWidth, 26, 3, 3, 'F');
   doc.setFont('helvetica', 'bold');
@@ -816,46 +788,43 @@ export function buildMemberSettlementReceiptPdf(
 
   currentY += 32;
 
-  // --- 3. STATUS BANNER ---
   if (member.isPaidInFull) {
-    // Green Paid In Full Banner
     doc.setFillColor(240, 253, 244);
     doc.setDrawColor(187, 247, 208);
     doc.roundedRect(14, currentY, pageWidth - 28, 16, 3, 3, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.setTextColor(22, 101, 52); // emerald-800
+    doc.setTextColor(22, 101, 52);
     doc.text('STATUS: PAID IN FULL', 20, currentY + 7);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
-    doc.setTextColor(21, 128, 61); // emerald-700
+    doc.setTextColor(21, 128, 61);
     doc.text(
       'All meal and pantry shares have been successfully deducted from your prepaid deposit wallet.',
       20,
       currentY + 12
     );
   } else {
-    // Red Partial / Insufficient Balance Banner
     doc.setFillColor(254, 242, 242);
     doc.setDrawColor(254, 202, 202);
     doc.roundedRect(14, currentY, pageWidth - 28, 18, 3, 3, 'FD');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(185, 28, 28); // red-700
+    doc.setFontSize(9.5);
+    doc.setTextColor(185, 28, 28);
     doc.text(
-      `STATUS: Partial / Insufficient Balance — Remaining Owed: ${formatCurrency(member.remainingOwed)}`,
+      `STATUS: Partial / Insufficient Balance — Remaining Owed: ${formatDualCurrency(member.remainingOwed)}`,
       20,
       currentY + 7
     );
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
-    doc.setTextColor(153, 27, 27); // red-800
+    doc.setTextColor(153, 27, 27);
     doc.text(
-      `Only ${formatCurrency(member.deductedAmount)} could be deducted. Please top up ${formatCurrency(member.remainingOwed)} to clear your outstanding balance.`,
+      `Only ${formatDualCurrency(member.deductedAmount)} could be deducted. Please top up ${formatDualCurrency(member.remainingOwed)} to clear your outstanding balance.`,
       20,
       currentY + 13
     );
@@ -863,7 +832,6 @@ export function buildMemberSettlementReceiptPdf(
 
   currentY += 23;
 
-  // --- 4. AUTHORITATIVE LEDGER BREAKDOWN (Real POST /bills/settle numbers) ---
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -873,27 +841,27 @@ export function buildMemberSettlementReceiptPdf(
   const ledgerRows = [
     [
       'Amount Due',
-      formatCurrency(member.totalDue),
+      formatDualCurrency(member.totalDue),
       'Authoritative calculated charge at settlement time',
     ],
     [
       'Deposit Before',
-      formatCurrency(member.previousDepositBalance),
+      formatDualCurrency(member.previousDepositBalance),
       'Member prepaid deposit wallet balance prior to settlement',
     ],
     [
       'Amount Deducted',
-      `-${formatCurrency(member.deductedAmount)}`,
+      `-${formatDualCurrency(member.deductedAmount)}`,
       'Amount debited from wallet during this settlement run',
     ],
     [
       'Deposit After',
-      formatCurrency(member.depositAfter),
+      formatDualCurrency(member.depositAfter),
       'Directly computed remaining wallet balance (Before - Deducted)',
     ],
     [
       'Remaining Owed',
-      member.remainingOwed > 0 ? formatCurrency(member.remainingOwed) : '$0.00',
+      member.remainingOwed > 0 ? formatDualCurrency(member.remainingOwed) : '0 ៛ ($0.00)',
       member.remainingOwed > 0
         ? 'Outstanding balance due immediately to household administrator'
         : 'Zero balance owed — fully settled',
@@ -902,22 +870,22 @@ export function buildMemberSettlementReceiptPdf(
 
   autoTable(doc, {
     startY: currentY,
-    head: [['Item / Ledger Field', 'Amount (USD)', 'Description & Verification']],
+    head: [['Item / Ledger Field', 'Amount (KHR & USD)', 'Description & Verification']],
     body: ledgerRows,
     theme: 'grid',
     headStyles: {
       fillColor: BRAND_PRIMARY,
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 9,
+      fontSize: 8.5,
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 8,
       textColor: TEXT_DARK,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 50 },
-      1: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },
+      0: { fontStyle: 'bold', cellWidth: 45 },
+      1: { fontStyle: 'bold', halign: 'right', cellWidth: 45 },
       2: { textColor: TEXT_MUTED },
     },
     margin: { left: 14, right: 14 },
@@ -927,7 +895,7 @@ export function buildMemberSettlementReceiptPdf(
           hookData.cell.styles.textColor = BRAND_PRIMARY;
         }
         if (hookData.row.index === 2 && hookData.column.index === 1) {
-          hookData.cell.styles.textColor = [185, 28, 28]; // red deduction
+          hookData.cell.styles.textColor = [185, 28, 28];
         }
         if (hookData.row.index === 3 && hookData.column.index === 1) {
           hookData.cell.styles.textColor = member.depositAfter < 0 ? [185, 28, 28] : [22, 101, 52];
@@ -944,7 +912,6 @@ export function buildMemberSettlementReceiptPdf(
     currentY = lastTableY + 10;
   }
 
-  // --- 5. RECEIPT AUTHENTICITY NOTICE ---
   doc.setFillColor(...BG_LIGHT);
   doc.setDrawColor(203, 213, 225);
   doc.roundedRect(14, currentY, pageWidth - 28, 26, 3, 3, 'FD');
@@ -973,7 +940,6 @@ export function buildMemberSettlementReceiptPdf(
     currentY + 22
   );
 
-  // Footer page numbering
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
@@ -1001,7 +967,6 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
   const pageWidth = doc.internal.pageSize.getWidth();
   let currentY = 16;
 
-  // Brand header
   doc.setFillColor(...BRAND_PRIMARY);
   doc.rect(14, currentY, 12, 12, 'F');
   doc.setTextColor(255, 255, 255);
@@ -1019,7 +984,6 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
   doc.setTextColor(...TEXT_MUTED);
   doc.text(labels.completedRecord, 30, currentY + 11);
 
-  // Right Header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -1037,13 +1001,11 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
 
   currentY += 21;
 
-  // Divider
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
   doc.line(14, currentY, pageWidth - 14, currentY);
   currentY += 6;
 
-  // Metadata Card
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(14, currentY, pageWidth - 28, 14, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
@@ -1056,28 +1018,27 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
   );
   currentY += 18;
 
-  // Key Totals Cards (3 columns)
   const colWidth = (pageWidth - 28 - 8) / 3;
 
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(14, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('TOTAL AMOUNT DUE', 18, currentY + 6);
-  doc.setFontSize(13);
+  doc.setFontSize(10);
   doc.setTextColor(...BRAND_PRIMARY);
-  doc.text(formatCurrency(receiptData.summary.totalDueAll), 18, currentY + 16);
+  doc.text(formatDualCurrency(receiptData.summary.totalDueAll), 18, currentY + 15);
 
   doc.setFillColor(...BG_LIGHT);
   doc.roundedRect(14 + colWidth + 4, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('TOTAL AMOUNT DEDUCTED', 18 + colWidth + 4, currentY + 6);
-  doc.setFontSize(13);
-  doc.setTextColor(22, 101, 52); // green
-  doc.text(formatCurrency(receiptData.summary.totalDeductedAll), 18 + colWidth + 4, currentY + 16);
+  doc.setFontSize(10);
+  doc.setTextColor(22, 101, 52);
+  doc.text(formatDualCurrency(receiptData.summary.totalDeductedAll), 18 + colWidth + 4, currentY + 15);
 
   if (receiptData.summary.totalRemainingOwedAll > 0) {
     doc.setFillColor(254, 242, 242);
@@ -1086,20 +1047,19 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
   }
   doc.roundedRect(14 + (colWidth + 4) * 2, currentY, colWidth, 22, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...TEXT_MUTED);
   doc.text('TOTAL REMAINING OWED', 18 + (colWidth + 4) * 2, currentY + 6);
-  doc.setFontSize(13);
+  doc.setFontSize(10);
   if (receiptData.summary.totalRemainingOwedAll > 0) {
     doc.setTextColor(185, 28, 28);
   } else {
     doc.setTextColor(22, 101, 52);
   }
-  doc.text(formatCurrency(receiptData.summary.totalRemainingOwedAll), 18 + (colWidth + 4) * 2, currentY + 16);
+  doc.text(formatDualCurrency(receiptData.summary.totalRemainingOwedAll), 18 + (colWidth + 4) * 2, currentY + 15);
 
   currentY += 28;
 
-  // Member Table
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...BRAND_PRIMARY);
@@ -1109,11 +1069,11 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
   const rows = receiptData.members.map((m) => [
     `#${m.userId}`,
     m.name,
-    formatCurrency(m.totalDue),
-    formatCurrency(m.previousDepositBalance),
-    formatCurrency(m.deductedAmount),
-    formatCurrency(m.depositAfter),
-    m.isPaidInFull ? 'Paid in Full' : `Partial (Owed: ${formatCurrency(m.remainingOwed)})`,
+    formatDualCurrency(m.totalDue),
+    formatDualCurrency(m.previousDepositBalance),
+    formatDualCurrency(m.deductedAmount),
+    formatDualCurrency(m.depositAfter),
+    m.isPaidInFull ? 'Paid in Full' : `Partial (Owed: ${formatDualCurrency(m.remainingOwed)})`,
   ]);
 
   autoTable(doc, {
@@ -1126,12 +1086,12 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
       [
         'Totals',
         `${receiptData.members.length} members`,
-        formatCurrency(receiptData.summary.totalDueAll),
+        formatDualCurrency(receiptData.summary.totalDueAll),
         '-',
-        formatCurrency(receiptData.summary.totalDeductedAll),
+        formatDualCurrency(receiptData.summary.totalDeductedAll),
         '-',
         receiptData.summary.totalRemainingOwedAll > 0
-          ? `Owed: ${formatCurrency(receiptData.summary.totalRemainingOwedAll)}`
+          ? `Owed: ${formatDualCurrency(receiptData.summary.totalRemainingOwedAll)}`
           : 'All Settled',
       ],
     ],
@@ -1146,10 +1106,10 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
       fillColor: BG_LIGHT,
       textColor: BRAND_PRIMARY,
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7.5,
     },
     bodyStyles: {
-      fontSize: 7.5,
+      fontSize: 7,
       textColor: TEXT_DARK,
     },
     columnStyles: {
@@ -1172,7 +1132,6 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
     },
   });
 
-  // Footer page numbering
   const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -1189,4 +1148,3 @@ export function buildMasterSettlementReceiptPdf(receiptData: PostSettlementRecei
 
   return doc;
 }
-
