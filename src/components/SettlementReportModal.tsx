@@ -23,6 +23,20 @@ interface SettlementReportModalProps {
 
 const DEFAULT_EXCHANGE_RATE = 4000;
 
+
+
+export const formatDualCurrency = (
+  amountVal: number | string,
+  exchangeRate: number = DEFAULT_EXCHANGE_RATE
+): string => {
+  const numericVal = typeof amountVal === 'number' ? amountVal : parseFloat(amountVal) || 0;
+  const khr = Math.round(numericVal);
+  const usd = (khr / exchangeRate).toFixed(2);
+  
+  // លទ្ធផល៖ "15,000 ៛ ($3.75)"
+  return `${khr.toLocaleString()} ៛ ($${usd})`;
+};
+
 /**
  * Format helper for dual currency values (KHR primary with USD sub-display)
  */
