@@ -13,7 +13,9 @@ firebase.initializeApp({
     projectId: "household-notification",
     storageBucket: "household-notification.firebasestorage.app",
     messagingSenderId: "63861799488",
-    appId: "1:63861799488:web:722be67b13cc6bcf8dbda5"
+    appId: "1:63861799488:web:722be67b13cc6bcf8dbda5",
+    
+
 });
 
 const messaging = firebase.messaging();
