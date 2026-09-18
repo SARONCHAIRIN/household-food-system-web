@@ -1,11 +1,27 @@
 pipeline {
     agent any
 
+    environment {
+        PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Check Node') {
+            steps {
+                sh '''
+                    echo "PATH=$PATH"
+                    which node
+                    which npm
+                    node -v
+                    npm -v
+                '''
             }
         }
 
