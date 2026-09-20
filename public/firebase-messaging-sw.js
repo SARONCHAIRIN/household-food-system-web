@@ -7,46 +7,38 @@ importScripts(
 );
 
 firebase.initializeApp({
-    // apiKey: "BBU_TzSB6vglimaTwTRjZvxq14yjs5RlQtAA_qGvlq4Y7xxadvJuL4UVenwPmd3K1nmUBOtFZFKw1i0CfBMinPU",
     apiKey: "AIzaSyAGgBqyhpqX3PdKsxuJU5cSxuqsjoYmP14",
     authDomain: "household-notification.firebaseapp.com",
     projectId: "household-notification",
     storageBucket: "household-notification.firebasestorage.app",
     messagingSenderId: "63861799488",
     appId: "1:63861799488:web:722be67b13cc6bcf8dbda5",
-    
-
 });
 
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage(function(payload) {
+messaging.onBackgroundMessage(function (payload) {
     console.log(
-        "[firebase-messaging-sw.js] Background message",
+        "[firebase-messaging-sw.js] Background message:",
         payload
     );
 
-    var title = "Household Food";
-    var body = "";
+    const notification = payload.notification || {};
+    const data = payload.data || {};
 
-    if (
-        payload &&
-        payload.notification &&
-        payload.notification.title
-    ) {
-        title = payload.notification.title;
-    }
+    const title =
+        notification.title ||
+        data.title ||
+        "Household Food";
 
-    if (
-        payload &&
-        payload.notification &&
-        payload.notification.body
-    ) {
-        body = payload.notification.body;
-    }
+    const body =
+        notification.body ||
+        data.body ||
+        "";
 
     self.registration.showNotification(title, {
         body: body,
-        icon: "/favicon.ico"
+        icon: "/favicon.ico",
+        data: data,
     });
 });
