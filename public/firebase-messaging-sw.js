@@ -23,6 +23,7 @@ messaging.onBackgroundMessage(function (payload) {
         payload
     );
 
+
     const notification = payload.notification || {};
     const data = payload.data || {};
 
