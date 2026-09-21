@@ -248,6 +248,13 @@ class ApiService {
     });
   }
 
+  async updateFcmToken(id: string | number, fcmToken: string): Promise<{ message?: string; success?: boolean }> {
+    return this.request<{ message?: string; success?: boolean }>(`/users/${id}/fcm-token`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fcmToken }),
+    });
+  }
+
   // --- Daily Costs ---
   async getDailyCosts(): Promise<DailyCost[]> {
     return this.request<DailyCost[]>('/daily-costs');

@@ -42,11 +42,12 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // Health check endpoint
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'household-food-system-proxy' });
+  app.get("/health", (req, res) => {
+    res.status(200).json({
+      status: "ok",
+      service: "household-food-api",
+    });
   });
-
   // 1. BACKEND REGISTRATION CONTRACT:
   // POST /auth/register and /api/v1/auth/register
   // Always forces status to "INACTIVE", role to "MEMBER", ignores any client-supplied status

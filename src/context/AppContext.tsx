@@ -14,6 +14,7 @@ import {
   MealConfirmationStatus,
 } from '../types/api';
 import { api, decodeJwt, parseCurrency } from '../services/apiClient';
+import { registerFCMToken } from '../services/fcmService';
 import { DateRange, computeDatePreset, getLocalDateString } from '../services/billingDateUtils';
 import { translations, Language } from '../translations';
 
@@ -384,9 +385,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const res = await api.login({ username, password });
       setIsAuthenticated(true);
+      let userId: string | number | undefined = res.userId;
       if (res.accessToken) {
         const decoded = decodeJwt(res.accessToken);
         if (decoded) {
+          userId = decoded.id ?? userId;
           setUserRole(decoded.role);
           setCurrentUser({
             id: decoded.id,
@@ -400,6 +403,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       showToast('Signed in successfully!', 'success');
       await refreshAllData();
+
+      // Register Firebase FCM Token in background (FCM failure must NOT cause login failure)
+      if (userId) {
+        try {
+          await registerFCMToken(userId);
+        } catch (fcmErr) {
+          console.warn('[FCM] Registration failed:', fcmErr);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       setError(msg);
